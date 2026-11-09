@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>AI 排班特助手機原型</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./dc-lite.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Noto Sans TC',system-ui,sans-serif}
+.wrap{width:390px;height:884px;background:#D9DCD6}
+.app{--bg:#F3F4F1;--ink:#1B2420;--sub:#5C6660;--line:#E1E4DF;--acc:#1B6B50;position:relative;width:390px;height:844px;overflow:hidden;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+.app *{box-sizing:border-box}
+.app button,.demo button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+.demo{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:12px;color:#4A514D}
+.demo button{min-height:30px;padding:0 12px;border-radius:8px;border:1px solid #9AA19C;background:#fff}
+.hdr{position:absolute;top:0;left:0;right:0;height:56px;display:flex;align-items:center;gap:4px;padding:0 10px 0 6px;background:#fff;border-bottom:1px solid var(--line);z-index:5}
+.hdr h1{margin:0;font-size:16px;font-weight:700;flex:1;padding-left:6px}
+.back{width:44px;height:44px;border:0;background:transparent;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.scr{position:absolute;top:56px;left:0;right:0;bottom:0;overflow-y:auto;padding:12px 14px 28px}
+.chat{position:absolute;top:56px;left:0;right:0;bottom:192px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#E8ECE6}
+.day{align-self:center;font-size:11px;color:var(--sub);background:rgba(255,255,255,.7);padding:2px 10px;border-radius:99px}
+.b-bot{align-self:flex-start;max-width:316px;background:#fff;border-radius:4px 14px 14px 14px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 0 rgba(0,0,0,.06)}
+.b-me{align-self:flex-end;max-width:300px;background:#CDE9DB;border-radius:14px 4px 14px 14px;padding:10px 12px}
+.b-name{font-size:12px;font-weight:700;color:var(--acc)}
+.kv{display:flex;gap:8px;font-size:13px}
+.kv b{flex:0 0 52px;color:var(--sub);font-weight:500}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+.btn{min-height:44px;padding:0 14px;border-radius:12px;border:1px solid #C9CFC8;background:#fff;font-weight:500}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.sm{min-height:40px;padding:0 12px;font-size:13px}
+.qr{align-self:flex-start;display:flex;flex-wrap:wrap;gap:8px}
+.qr button{min-height:40px;padding:0 16px;border-radius:99px;border:1px solid var(--acc);background:#fff;color:var(--acc);font-weight:500}
+.warn{background:#F9D6D6;color:#A02323;border-radius:10px;padding:8px 10px;font-size:13px}
+.note{background:#FBF0B8;color:#5A4700;border-radius:10px;padding:8px 10px;font-size:13px}
+.menu{position:absolute;left:0;right:0;bottom:40px;height:152px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:1px;background:var(--line);border-top:1px solid var(--line)}
+.mi{border:0;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-weight:500;color:var(--ink)}
+.mi svg{color:var(--acc)}
+.cbar{position:absolute;left:0;right:0;bottom:0;height:40px;background:#fff;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--sub)}
+.card{background:#fff;border-radius:14px;padding:12px;margin-bottom:12px;box-shadow:0 1px 0 rgba(0,0,0,.05)}
+.card h2{margin:0 0 8px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.stat{background:#fff;border-radius:12px;padding:8px 4px;text-align:center}
+.stat b{display:block;font-size:20px;line-height:1.2}
+.stat span{font-size:11px;color:var(--sub)}
+.tl{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.tm{flex:0 0 78px;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums}
+.tx{flex:1;font-size:13px}
+.tx small{display:block;color:var(--sub);font-size:12px}
+.chip{display:inline-block;font-size:11px;font-weight:500;padding:1px 8px;border-radius:99px;vertical-align:middle}
+.k-s{background:#DCE8FB;color:#1E4FA8}
+.k-r{background:#FCE6C8;color:#8A4B00}
+.k-v{background:#E7DDF8;color:#55309A}
+.k-p{background:#FBF0B8;color:#6B5500}
+.k-l{background:#E3E5E4;color:#4A514D}
+.k-x{background:#F9D6D6;color:#A02323}
+.k-c{background:#D5EEDD;color:#1F6B3C}
+.k-n{background:#F0F1EF;color:#5F6661;outline:1px dashed #B9BFB8;outline-offset:-1px}
+.k-off{background:transparent;color:#8A918C}
+.tabs{display:flex;gap:4px;background:#E5E8E2;border-radius:12px;padding:3px;margin-bottom:12px}
+.tabs button{flex:1;min-height:40px;border:0;border-radius:10px;background:transparent;font-weight:500;color:var(--sub)}
+.tabs button.on{background:#fff;color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.wkwrap{overflow-x:auto;margin:0 -14px;padding:0 14px 8px}
+.wkrow{display:grid;grid-template-columns:76px repeat(7,92px);gap:4px;margin-bottom:4px;width:max-content}
+.wkname{position:sticky;left:0;z-index:2;background:var(--bg);display:flex;flex-direction:column;justify-content:center;font-weight:700;font-size:13px;padding-right:4px}
+.wkname small{font-weight:400;font-size:11px;color:var(--sub)}
+.wkhead{text-align:center;font-size:12px;color:var(--sub);padding:4px 0}
+.wkhead.today{color:#fff;background:var(--acc);border-radius:8px;font-weight:700}
+.cell{min-height:50px;padding:6px;border-radius:8px;border:0;text-align:left;font-size:12px;line-height:1.3;display:flex;align-items:center}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calh{text-align:center;font-size:12px;color:var(--sub);padding:2px 0}
+.cd{min-height:54px;border-radius:10px;border:2px solid transparent;background:#fff;padding:4px;display:flex;flex-direction:column;align-items:flex-start;text-align:left}
+.cd b{font-size:13px}
+.cd span{font-size:10px;color:var(--sub);line-height:1.2}
+.cd.warn2{background:#F9D6D6}
+.cd.wk{background:#EEF0EC}
+.cd.today{border-color:var(--acc)}
+.cd.sel{outline:2px solid var(--ink)}
+.pool{background:#fff;border-radius:14px;padding:12px;margin-bottom:10px}
+.pool h3{margin:6px 0 2px;font-size:14px}
+.ai{margin-top:8px;background:#EAF3EE;border-radius:10px;padding:8px 10px;font-size:13px}
+.sheetbg{position:absolute;inset:0;background:rgba(20,28,24,.45);z-index:20;display:flex;align-items:flex-end}
+.sheet{width:100%;background:#fff;border-radius:18px 18px 0 0;padding:16px 16px 20px}
+.sheet h3{margin:0 0 4px;font-size:16px}
+.draft{background:#F3F4F1;border-radius:10px;padding:10px 12px;font-size:13px;margin:8px 0}
+.toast{position:absolute;left:16px;right:16px;bottom:60px;background:#1B2420;color:#fff;border-radius:12px;padding:10px 14px;font-size:13px;z-index:30}
+.site{background:#fff;border-radius:14px;padding:12px;margin-bottom:10px}
+.site h3{margin:0 0 6px;font-size:15px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.row2{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.fu{background:#fff;border-radius:14px;padding:12px;margin-bottom:10px}
+.fu.done{opacity:.6}
+.fu.done h3{text-decoration:line-through}
+.fu h3{margin:6px 0 2px;font-size:14px}
+.sub{color:var(--sub);font-size:12px}
+.ext{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+</style>
+</helmet>
+<div class="wrap">
+<div class="app">
+
+<div class="hdr">
+<sc-if value="{{ notChat }}" hint-placeholder-val="{{ false }}">
+<button class="back" aria-label="關閉，回到對話" onClick="{{ goChat }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</sc-if>
+<h1>{{ title }}</h1>
+</div>
+
+<sc-if value="{{ isChat }}" hint-placeholder-val="{{ true }}">
+<div class="chat">
+<div class="day">今天 07:30</div>
+<div class="b-bot">
+<div class="b-name">寬林 AI 特助</div>
+<div>早安冠璋，今日固定工作：</div>
+<div>① 飛哥＋阿倫：晶心 → 楊梅（阿東到楊梅支援）</div>
+<div>② 冠璋＋阿杰：10:30 青埔接地線施工＋場勘</div>
+<div>③ 14:00 頭城家萱場勘</div>
+<div class="note">機動保留：元式鐵捲門今日必須完成（冠璋）</div>
+<div class="btnrow"><button class="btn sm" onClick="{{ goToday }}">看今日排程</button></div>
+</div>
+
+<div class="day">今天 10:12</div>
+<div class="b-me">宜得利內湖店 監視器壞了，明天可以來看嗎？</div>
+
+<div class="b-bot">
+<div class="b-name">我整理成這樣，請確認</div>
+<div class="kv"><b>案場</b><span>宜得利內湖店</span></div>
+<div class="kv"><b>工作</b><span>監視器故障維修</span></div>
+<div class="kv"><b>時間</b><span>11/10（二），約 2 小時</span></div>
+<div class="kv"><b>需求</b><span>弱電 1 人</span></div>
+<div class="kv"><b>建議</b><span>阿澤（點工，可單人弱電維修）</span></div>
+<div class="btnrow">
+<button class="btn pri" onClick="{{ doConfirm }}">確認新增</button>
+<button class="btn" onClick="{{ doReassign }}">改派人員</button>
+<button class="btn" onClick="{{ doLater }}">稍後處理</button>
+</div>
+</div>
+
+<sc-if value="{{ hasPicked }}" hint-placeholder-val="{{ false }}"><div class="b-me">{{ picked }}</div></sc-if>
+
+<sc-if value="{{ showReassign }}" hint-placeholder-val="{{ false }}">
+<div class="b-bot"><div>要改派給誰？</div></div>
+<div class="qr">
+<button onClick="{{ pickLun }}">阿倫</button>
+<button onClick="{{ pickZe }}">阿澤</button>
+<button onClick="{{ pickJie }}">阿杰</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasConflict }}" hint-placeholder-val="{{ false }}">
+<div class="b-bot">
+<div class="warn">衝突：阿杰 11/10 已排「維修」，不能同時安排。請改選其他人。</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isConfirmed }}" hint-placeholder-val="{{ false }}">
+<div class="b-bot">
+<div>已加入 11/10 排程：{{ assignedName }} → 宜得利內湖店（監視器維修，約 2 小時）。人力表已更新。</div>
+<sc-if value="{{ isEmp }}" hint-placeholder-val="{{ false }}"><div class="sub">已用 LINE 通知{{ assignedName }}。</div></sc-if>
+<sc-if value="{{ isZe }}" hint-placeholder-val="{{ true }}">
+<div class="note">阿澤是點工，不在這個官方帳號內，我先備好通知內容，由你傳給他。</div>
+<div class="btnrow"><button class="btn sm" onClick="{{ draftZe }}">傳給阿澤</button></div>
+</sc-if>
+<div class="btnrow"><button class="btn sm" onClick="{{ goBoard }}">看人力表</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isLater }}" hint-placeholder-val="{{ false }}">
+<div class="b-bot">
+<div>已放進待排工作池（本週內）。11/10 阿倫、阿盛待排，明天 07:30 我會再提醒你。</div>
+<div class="btnrow"><button class="btn sm" onClick="{{ goPool }}">看待排池</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showDup }}" hint-placeholder-val="{{ false }}">
+<div class="b-bot"><div>這張確認卡已經處理過了，不會重複新增。</div></div>
+</sc-if>
+
+<sc-if value="{{ showAdd }}" hint-placeholder-val="{{ false }}">
+<div class="b-bot">
+<div class="b-name">寬林 AI 特助</div>
+<div>請直接轉傳訊息、貼上文字、傳照片，或傳語音給我。我會整理成任務，讓你確認。</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showHelp }}" hint-placeholder-val="{{ false }}">
+<div class="b-bot">
+<div class="b-name">寬林 AI 特助</div>
+<div>你可以這樣跟我說：</div>
+<div>・看這週誰還沒排</div>
+<div>・下週三缺幾個人？</div>
+<div>・把阿倫 11/10 改派到廣明</div>
+<div>・新增待排：宜得利監視器維修，本週內</div>
+</div>
+</sc-if>
+</div>
+
+<div class="menu">
+<button class="mi" onClick="{{ goToday }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M4 10h16M9 3v4M15 3v4"></path></svg>今日工作</button>
+<button class="mi" onClick="{{ goFollow }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path></svg>待我回覆</button>
+<button class="mi" onClick="{{ goBoard }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"></circle><circle cx="17" cy="9" r="2.4"></circle><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5M15 15c3 0 6 1.4 6 4"></path></svg>人力排班</button>
+<button class="mi" onClick="{{ goSites }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>專案總覽</button>
+<button class="mi" onClick="{{ addTask }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v8M8 12h8"></path></svg>新增任務</button>
+<button class="mi" onClick="{{ helpFn }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 015 .5c0 1.6-2.5 2-2.5 3.5M12 17h.01"></path></svg>怎麼用</button>
+</div>
+<div class="cbar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"></rect><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"></path></svg>選單</div>
+</sc-if>
+
+<sc-if value="{{ isToday }}" hint-placeholder-val="{{ false }}">
+<div class="scr">
+<div class="stats">
+<div class="stat"><b>6</b><span>出勤</span></div>
+<div class="stat"><b>1</b><span>待排</span></div>
+<div class="stat"><b>1</b><span>機動保留</span></div>
+<div class="stat"><b style="color:#A02323">2</b><span>預警</span></div>
+</div>
+
+<div class="card">
+<h2>飛哥＋阿倫 <span class="sub">ZINGER</span></h2>
+<div class="tl"><div class="tm">08:30</div><div class="tx">公司集合、備料</div></div>
+<div class="tl"><div class="tm">10:15–11:15</div><div class="tx">新竹晶心科技 <span class="chip k-r">維修</span><small>電源插座無電，兩人出勤</small></div></div>
+<div class="tl"><div class="tm">13:00–16:00</div><div class="tx">楊梅樂活護理之家 <span class="chip k-r">維修</span><small>監視器故障，可改時間；阿東到場支援（第三人）</small></div></div>
+<div class="note" style="margin-top:6px">晶心 11:15 仍未排除時，楊梅順延，我會在 11:15 問你。</div>
+</div>
+
+<div class="card">
+<h2>冠璋＋阿杰 <span class="sub">CR-V</span></h2>
+<div class="tl"><div class="tm">10:30–11:30</div><div class="tx">青埔艾特電總部 <span class="chip k-s">施工</span><small>接地線配線，固定時間不可移動</small></div></div>
+<div class="tl"><div class="tm">11:30–12:00</div><div class="tx">冷熱通道場勘 <span class="chip k-v">場勘</span></div></div>
+<div class="tl"><div class="tm">14:00</div><div class="tx">頭城家萱場勘 <span class="chip k-v">場勘</span><small>冠璋</small></div></div>
+</div>
+
+<div class="card">
+<h2>元式鐵捲門維修（大同） <span class="chip k-{{ yuanCls }}">{{ yuanChip }}</span></h2>
+<div class="sub">負責人：冠璋　今日必須完成　尚未鎖定時段</div>
+<div class="note" style="margin-top:8px">{{ yuanMsg }}</div>
+<sc-if value="{{ yuanIsRe }}" hint-placeholder-val="{{ false }}"><div class="btnrow"><button class="btn pri sm" onClick="{{ yuanConfirmRe }}">確認改派並通知阿盛、阿東</button></div></sc-if>
+<div class="btnrow">
+<button class="btn sm" onClick="{{ yuanSelf }}">我等等處理</button>
+<button class="btn sm" onClick="{{ yuanRe }}">改派人員</button>
+<button class="btn sm" onClick="{{ yuanVendor }}">通知廠商</button>
+<button class="btn sm" onClick="{{ yuanDone }}">已完成</button>
+</div>
+</div>
+
+<div class="card">
+<h2>預警</h2>
+<div class="warn" style="margin-bottom:8px">週四 11/12：阿鎮團隊同日需支援 MOLEX 與杜邦，4 人不足。</div>
+<div class="note">阿盛今日待排，但不可單獨出勤，建議搭配飛哥或阿倫。</div>
+<div class="sub" style="margin-top:8px">阿東明天請假，已由請假表自動帶入，不會被排班。</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isFollow }}" hint-placeholder-val="{{ false }}">
+<div class="scr">
+<sc-for list="{{ follows }}" as="f" hint-placeholder-count="3">
+<div class="fu {{ f.doneCls }}">
+<span class="chip k-{{ f.cls }}">{{ f.kind }}</span> <span class="sub">{{ f.when }}</span>
+<h3>{{ f.title }}</h3>
+<div class="sub">{{ f.desc }}</div>
+<div class="btnrow"><button class="btn sm" onClick="{{ f.act }}">{{ f.actText }}</button><button class="btn sm" onClick="{{ f.done }}">{{ f.doneText }}</button></div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+<div class="scr">
+<div class="tabs">
+<button class="{{ tabM }}" onClick="{{ setTabM }}">人力表</button>
+<button class="{{ tabP }}" onClick="{{ setTabP }}">待排池</button>
+<button class="{{ tabA }}" onClick="{{ setTabA }}">可用人力</button>
+</div>
+
+<sc-if value="{{ isMatrix }}" hint-placeholder-val="{{ true }}">
+<div class="tabs">
+<button class="{{ viewW }}" onClick="{{ setViewW }}">本週</button>
+<button class="{{ viewM }}" onClick="{{ setViewM }}">整月</button>
+</div>
+
+<sc-if value="{{ isWeek }}" hint-placeholder-val="{{ true }}">
+<div class="wkwrap">
+<div class="wkrow">
+<div class="wkname"></div>
+<sc-for list="{{ heads }}" as="h" hint-placeholder-count="7"><div class="wkhead {{ h.cls }}">{{ h.text }}</div></sc-for>
+</div>
+<sc-for list="{{ rows }}" as="row" hint-placeholder-count="9">
+<div class="wkrow">
+<div class="wkname">{{ row.n }}<small>{{ row.sub }}</small></div>
+<sc-for list="{{ row.cells }}" as="cell" hint-placeholder-count="7"><button class="cell k-{{ cell.cls }}" aria-label="{{ cell.aria }}" onClick="{{ cell.pick }}">{{ cell.text }}</button></sc-for>
+</div>
+</sc-for>
+</div>
+<div class="legend">
+<span class="chip k-s">S 施工</span><span class="chip k-r">R 維修</span><span class="chip k-v">V 場勘會議</span><span class="chip k-p">P 待排</span><span class="chip k-l">L 請假</span><span class="chip k-x">X 衝突</span><span class="chip k-n">N 未叫工</span>
+</div>
+<div class="sub">點任一格看詳細與 AI 建議；左右滑動看整週。</div>
+</sc-if>
+
+<sc-if value="{{ isMonth }}" hint-placeholder-val="{{ false }}">
+<div class="card">
+<h2>2026 年 11 月</h2>
+<div class="cal">
+<div class="calh">一</div><div class="calh">二</div><div class="calh">三</div><div class="calh">四</div><div class="calh">五</div><div class="calh">六</div><div class="calh">日</div>
+<sc-for list="{{ calCells }}" as="c" hint-placeholder-count="35">
+<sc-if value="{{ c.blank }}" hint-placeholder-val="{{ false }}"><div></div></sc-if>
+<sc-if value="{{ c.filled }}" hint-placeholder-val="{{ true }}"><button class="cd {{ c.cls }}" aria-label="{{ c.aria }}" onClick="{{ c.pick }}"><b>{{ c.d }}</b><span>{{ c.sum }}</span></button></sc-if>
+</sc-for>
+</div>
+</div>
+<div class="card"><div style="font-size:13px">{{ selLine }}</div></div>
+<div class="sub">紅底代表人力不足或衝突。</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ isPool }}" hint-placeholder-val="{{ false }}">
+<sc-for list="{{ pool }}" as="it" hint-placeholder-count="4">
+<div class="pool">
+<span class="chip k-{{ it.cls }}">{{ it.req }}</span> <span class="sub">{{ it.need }}</span>
+<h3>{{ it.site }}</h3>
+<div>{{ it.work }}</div>
+<div class="ai">{{ it.ai }}</div>
+<div class="btnrow"><button class="btn sm {{ it.btnCls }}" onClick="{{ it.adopt }}">{{ it.adoptText }}</button></div>
+</div>
+</sc-for>
+</sc-if>
+
+<sc-if value="{{ isAvail }}" hint-placeholder-val="{{ false }}">
+<div class="card">
+<h2>本週可用人力</h2>
+<sc-for list="{{ avail }}" as="a" hint-placeholder-count="5">
+<div class="ext" style="align-items:flex-start"><div><b>{{ a.day }}</b><div class="sub">{{ a.text }}</div></div><span class="chip k-{{ a.cls }}">{{ a.chip }}</span></div>
+</sc-for>
+</div>
+<div class="card">
+<h2>外包與點工</h2>
+<div class="ext"><div><b>阿鎮團隊</b><div class="sub">4 人，本週已排滿（MOLEX／杜邦拆分待定）</div></div><span class="chip k-x">衝突</span></div>
+<div class="ext"><div><b>阿國團隊</b><div class="sub">最多 8 人，目前{{ guoState }}</div></div><button class="btn sm" onClick="{{ toggleGuo }}">{{ guoText }}</button></div>
+<div class="ext"><div><b>阿澤</b><div class="sub">點工，弱電單人維修可叫</div></div><button class="btn sm" onClick="{{ callZe }}">叫工訊息</button></div>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSites }}" hint-placeholder-val="{{ false }}">
+<div class="scr">
+<div class="site">
+<h3>MOLEX A＋B 區 <span class="chip k-s">施工</span></h3>
+<div class="sub">信義區　合作設計：有偶設計　主責：阿鎮團隊</div>
+<div class="row2"><span class="chip k-p">首次合作品質</span><span class="chip k-p">收款是否順利</span><span class="chip k-v">全程 EMT</span></div>
+<div class="note" style="margin-top:8px">資料建立於 9/8，請在對話告訴我最新現況與期限。</div>
+</div>
+<div class="site">
+<h3>杜邦 信義富邦 A25 <span class="chip k-s">施工</span></h3>
+<div class="sub">合作設計：大震設計　主責：機弱電系統整合　阿鎮＋寬林員工</div>
+<div class="row2"><span class="chip k-x">智慧水表未解決</span><span class="chip k-x">點滅控制器未解決</span><span class="chip k-v">勞安要求高</span></div>
+<div class="note" style="margin-top:8px">資料建立於 9/8，請在對話告訴我最新現況與期限。</div>
+</div>
+<div class="site"><h3>晶心科技（新竹）<span class="chip k-r">維修</span></h3><div class="sub">電源插座故障，車程約 1.5 小時</div></div>
+<div class="site"><h3>廣明光電（林口）<span class="chip k-s">施工</span></h3><div class="sub">點位追加待排</div></div>
+<div class="site"><h3>艾特電總部（青埔）<span class="chip k-s">施工</span></h3><div class="sub">接地線配線＋冷熱通道場勘</div></div>
+<div class="site"><h3>楊梅樂活護理之家 <span class="chip k-r">維修</span></h3><div class="sub">監視器故障，可改時間</div></div>
+<div class="site"><h3>宜得利各門市 <span class="chip k-r">維修</span></h3><div class="sub">監視器維修，臨時叫修</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasCellSheet }}" hint-placeholder-val="{{ false }}">
+<div class="sheetbg">
+<div class="sheet">
+<h3>{{ sheetTitle }}</h3>
+<div class="sub">{{ sheetWho }}</div>
+<div style="margin:8px 0"><span class="chip k-{{ sheetCls }}">{{ sheetStatus }}</span></div>
+<div class="ai">{{ sheetNote }}</div>
+<div class="sub" style="margin-top:8px">要調整請在對話輸入，例如：「把阿倫 11/10 改派到廣明」。</div>
+<div class="btnrow" style="margin-top:12px"><button class="btn pri sm" onClick="{{ closeSheet }}">關閉</button></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasDraftSheet }}" hint-placeholder-val="{{ false }}">
+<div class="sheetbg">
+<div class="sheet">
+<h3>{{ draftTitle }}</h3>
+<div class="sub">訊息內容可修改後再傳送</div>
+<div class="draft">{{ draftText }}</div>
+<div class="btnrow">
+<button class="btn pri sm" onClick="{{ draftSend }}">選擇聊天室並傳送</button>
+<button class="btn sm" onClick="{{ draftCopy }}">複製</button>
+<button class="btn sm" onClick="{{ closeSheet }}">取消</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+<div class="toast" role="status">{{ toast }}</div>
+</sc-if>
+
+</div>
+<div class="demo"><span>示範用：範例資料</span><button onClick="{{ resetDemo }}">重新開始示範</button></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":884}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const DEF = { screen: 'chat', tab: 'matrix', view: 'week', selDay: 12, decision: null, assignee: null, picked: null, conflict: false, showReassign: false, showAdd: false, showHelp: false, dup: false, yuan: null, adopted: {}, fdone: {}, guoOn: false, sheet: null, toast: '' };
+    const s = Object.assign({}, DEF, this.state || {});
+    const set = (o) => this.setState(o);
+    const say = (m) => { set({ toast: m }); clearTimeout(this._tt); this._tt = setTimeout(() => set({ toast: '' }), 2000); };
+    const go = (screen) => () => set({ screen, sheet: null, toast: '' });
+
+    const LBL = { S: '施工', R: '維修', V: '場勘／會議', P: '待排', L: '請假', X: '衝突', C: '已完成', N: '未叫工', '-': '休' };
+    const CLS = { S: 's', R: 'r', V: 'v', P: 'p', L: 'l', X: 'x', C: 'c', N: 'n', '-': 'off' };
+    const WD = ['日', '一', '二', '三', '四', '五', '六'];
+    const PEOPLE = [
+      { n: '冠璋', sub: '老闆', seg: ['-', 'CCCCC--', 'VVPVS--', 'SPPRS--', 'PPVPP--', 'P'], tx: ['青埔場勘＋頭城', '報價／公司', '待排', '客戶會議', '杜邦'] },
+      { n: '飛哥', sub: '', seg: ['-', 'CCCCC--', 'RRSPS--', 'SSSPS--', 'SSPSS--', 'S'], tx: ['晶心→楊梅', '晶心', 'MOLEX', '待排', '杜邦'] },
+      { n: '阿倫', sub: '', seg: ['-', 'CCCCC--', 'RPSSS--', 'SSSSS--', 'SPSSS--', 'S'], tx: ['晶心→楊梅', '待排', 'MOLEX', '杜邦', '杜邦'] },
+      { n: '阿東', sub: '', seg: ['-', 'CCCCC--', 'RLPSS--', 'PSSSS--', 'SSPSS--', 'S'], tx: ['楊梅支援', '請假', '待排', 'MOLEX', '杜邦'] },
+      { n: '阿杰', sub: '', seg: ['-', 'CCCCC--', 'VRPSS--', 'SPSPS--', 'PSSPS--', 'P'], tx: ['青埔', '維修', '待排', 'MOLEX', '杜邦'] },
+      { n: '阿盛', sub: '助手', seg: ['-', 'CCPCC--', 'PPPPS--', 'PSPSP--', 'PPPPP--', 'P'], tx: ['待排', '待排', '待排', '待排', '杜邦助手'] },
+      { n: '阿澤', sub: '點工', seg: ['-', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'N'], tx: ['未叫工', '未叫工', '未叫工', '未叫工', '未叫工'] },
+      { n: '阿鎮團隊', sub: '4 人·外包', seg: ['-', 'CCCCC--', 'SSSXS--', 'SSSSS--', 'SSSSS--', 'S'], tx: ['4人·MOLEX', '4人·MOLEX', '4人·杜邦', 'MOLEX＋杜邦 衝突', '4人·杜邦'] },
+      { n: '阿國團隊', sub: '外包', seg: ['-', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'N'], tx: ['未啟用', '未啟用', '未啟用', '未啟用', '未啟用'] }
+    ];
+    const confirmed = s.decision === 'confirm';
+    const assignedName = s.assignee || '阿澤';
+
+    // overrides from chat confirm and pool adoption
+    const ov = {};
+    if (confirmed) ov[assignedName + '@10'] = ['R', '宜得利內湖店'];
+    if (s.adopted.y) ov['阿澤@10'] = ['R', '宜得利內湖店'];
+    if (s.adopted.g) { ov['阿杰@11'] = ['S', '廣明點位']; ov['阿盛@11'] = ['S', '廣明點位']; }
+    if (s.adopted.m) ov['冠璋@17'] = ['V', '新案場場勘'];
+    const codeOf = (pi, day) => { const o = ov[PEOPLE[pi].n + '@' + day]; return o ? o[0] : PEOPLE[pi].seg.join('')[day - 1]; };
+    const isWeekend = (d) => { const w = (d - 1) % 7; return w === 0 || w === 6; };
+
+    const noteFor = (name, code) => {
+      if (code === 'P') {
+        if (name === '冠璋') return 'AI 建議：可安排新案場「機弱電場勘」（需資深 1 人）。';
+        if (name === '阿盛') return 'AI 建議：阿盛不可單獨出勤，建議搭配飛哥或阿倫。';
+        return 'AI 建議：可從待排池挑工作，例如廣明光電點位追加（2 人·半天）。';
+      }
+      if (code === 'X') return '阿鎮團隊 4 人，11/12 同時需支援 MOLEX 與杜邦。建議拆 2＋2，或其中一案改期。';
+      if (code === 'L') return '請假資料由請假表自動帶入，不會被排班。';
+      if (code === 'N') return '點工或外包尚未叫工。';
+      if (code === 'C') return '已完成。';
+      if (code === '-') return '休假日。';
+      return '依案場排定。';
+    };
+
+    const heads = [];
+    for (let k = 0; k < 7; k++) { const d = 9 + k; heads.push({ text: '11/' + d + ' ' + WD[(d - 1) % 7], cls: d === 9 ? 'today' : '' }); }
+    const rows = PEOPLE.map((p, pi) => ({
+      n: p.n, sub: p.sub,
+      cells: [0, 1, 2, 3, 4, 5, 6].map((k) => {
+        const day = 9 + k;
+        const code = codeOf(pi, day);
+        const o = ov[p.n + '@' + day];
+        const text = o ? o[1] : (k < 5 ? p.tx[k] : '休');
+        const when = '11/' + day + '（' + WD[(day - 1) % 7] + '）';
+        return {
+          cls: CLS[code], text, aria: p.n + ' ' + when + ' ' + text,
+          pick: () => set({ sheet: { kind: 'cell', title: text, who: p.n + '　' + when, status: LBL[code], cls: CLS[code], note: noteFor(p.n, code) } })
+        };
+      })
+    }));
+
+    const calCells = [];
+    for (let i = 0; i < 6; i++) calCells.push({ blank: true, filled: false });
+    const stat = {};
+    for (let d = 1; d <= 30; d++) {
+      let sched = 0, pend = 0, done = 0, x = false;
+      PEOPLE.forEach((p, pi) => { const c = codeOf(pi, d); if (c === 'S' || c === 'R' || c === 'V') sched++; if (c === 'X') { sched++; x = true; } if (c === 'P') pend++; if (c === 'C') done++; });
+      stat[d] = { sched, pend, done, x };
+      const wk = isWeekend(d), past = d < 9;
+      const sum = wk ? '休' : past ? '完成 ' + done : '排' + sched + ' 待' + pend;
+      calCells.push({ blank: false, filled: true, d, sum,
+        cls: (wk ? 'wk ' : '') + (x ? 'warn2 ' : '') + (d === 9 ? 'today ' : '') + (s.selDay === d ? 'sel' : ''),
+        aria: '11/' + d + ' ' + sum, pick: () => set({ selDay: d }) });
+    }
+    while (calCells.length < 42) calCells.push({ blank: true, filled: false });
+    const sd = s.selDay, st = stat[sd];
+    let selLine;
+    if (isWeekend(sd)) selLine = '11/' + sd + '（' + WD[(sd - 1) % 7] + '）：休假日。';
+    else if (sd < 9) selLine = '11/' + sd + '（' + WD[(sd - 1) % 7] + '）：已完成 ' + st.done + ' 人次。';
+    else selLine = '11/' + sd + '（' + WD[(sd - 1) % 7] + '）：已排 ' + st.sched + ' 人，待排 ' + st.pend + ' 人。' + (st.x ? ' 阿鎮團隊同日需支援 MOLEX＋杜邦，人力不足。' : '');
+
+    // pool
+    const base = [
+      { id: 'g', req: '11/11', cls: 'p', site: '廣明光電（林口）', work: '點位追加', need: '2 人·半天', ai: '阿杰＋阿盛（11/11 兩人皆待排，技能符合）。', note: '已排入 11/11：阿杰＋阿盛。', on: '排入建議人選', off: '取消排入' },
+      { id: 'm', req: '下週', cls: 'p', site: '新案場', work: '機弱電場勘', need: '資深 1 人', ai: '冠璋（11/17 待排）。', note: '已排入 11/17：冠璋。', on: '排入建議人選', off: '取消排入' },
+      { id: 'w', req: '儘速', cls: 'x', site: '杜邦 富邦 A25', work: '智慧水表方案確認', need: '技術決策', ai: '需冠璋決定廠商與方案。', note: '已標記決定。', on: '標記已決定', off: '取消決定' },
+      { id: 'd', req: '儘速', cls: 'x', site: '杜邦 富邦 A25', work: '點滅控制器方案確認', need: '技術決策', ai: '建議與智慧水表一起處理。', note: '已標記決定。', on: '標記已決定', off: '取消決定' }
+    ];
+    if (s.decision === 'later') base.unshift({ id: 'y', req: '本週內', cls: 'p', site: '宜得利內湖店', work: '監視器故障維修', need: '弱電 1 人·2 小時', ai: '阿澤（點工，11/10 未叫工）或阿倫（11/10 待排）。', note: '已排入 11/10：阿澤。', on: '排入建議人選', off: '取消排入' });
+    const pool = base.map((it) => {
+      const on = !!s.adopted[it.id];
+      return {
+        req: it.req, cls: on ? 'c' : it.cls, site: it.site, work: it.work, need: it.need,
+        ai: on ? it.note : 'AI 建議：' + it.ai,
+        btnCls: on ? '' : 'pri', adoptText: on ? it.off : it.on,
+        adopt: () => set({ adopted: Object.assign({}, s.adopted, { [it.id]: !on }) })
+      };
+    });
+
+    const avail = [];
+    for (let d = 9; d <= 13; d++) {
+      const free = [], x = [];
+      PEOPLE.forEach((p, pi) => { const c = codeOf(pi, d); if (c === 'P') free.push(p.n); if (c === 'X') x.push(p.n); });
+      const wd = '11/' + d + '（' + WD[(d - 1) % 7] + '）';
+      if (x.length) avail.push({ day: wd, text: '人力不足：' + x.join('、') + ' 同日需支援兩案。可用：' + (free.join('、') || '無'), cls: 'x', chip: '不足' });
+      else avail.push({ day: wd, text: free.length ? '可用：' + free.join('、') : '全員已排', cls: free.length ? 'p' : 'c', chip: free.length ? free.length + ' 人可用' : '排滿' });
+    }
+
+    // draft sheets
+    const DR = {
+      ze: { title: '傳給阿澤', text: '阿澤你好，11/10（二）想請你到宜得利內湖店處理監視器故障，預計 2 小時。方便的話請回覆可到場時間，謝謝。' },
+      vendor: { title: '通知鐵捲門廠商', text: '您好，大同元式鐵捲門今日需要維修，請問今天可以到場嗎？麻煩回覆預計抵達時間，謝謝。' },
+      f1: { title: '回覆宜得利內湖店', text: '您好，明天（11/10）可以安排人員到內湖店查看監視器，確認到場時間後再通知您。' },
+      f2: { title: '催詢鐵捲門廠商', text: '您好，想請問元式鐵捲門的報價是否已經準備好？麻煩回覆，謝謝。' }
+    };
+    const openDraft = (k) => () => set({ sheet: { kind: 'draft', key: k } });
+    const D = s.sheet && s.sheet.kind === 'draft' ? DR[s.sheet.key] : null;
+    const afterSend = { vendor: () => ({ yuan: 'vendor' }), f1: () => ({ fdone: Object.assign({}, s.fdone, { f1: true }) }) };
+
+    // follow-ups
+    const FU = [
+      { id: 'f1', kind: '等我回覆', cls: 'p', when: '今天 10:12', title: '宜得利內湖店：明天能來看嗎？', desc: '客戶詢問，尚未回覆。', actText: '回覆草稿', act: openDraft('f1'), doneText: '已處理' },
+      { id: 'f2', kind: '等對方回覆', cls: 'v', when: '已等 2 天', title: '鐵捲門廠商：元式報價', desc: '上次催詢是 11/7。', actText: '催詢草稿', act: openDraft('f2'), doneText: '已回覆' },
+      { id: 'f3', kind: '待我處理', cls: 'x', when: '高優先', title: '杜邦：智慧水表方案', desc: '未解決事項，建議本週決定。', actText: '看待排池', act: () => set({ screen: 'board', tab: 'pool' }), doneText: '已完成' },
+      { id: 'f4', kind: '待我處理', cls: 'x', when: '高優先', title: '杜邦：點滅控制器方案', desc: '未解決事項。', actText: '看待排池', act: () => set({ screen: 'board', tab: 'pool' }), doneText: '已完成' }
+    ];
+    const follows = FU.map((f) => ({
+      kind: f.kind, cls: f.cls, when: f.when, title: f.title, desc: f.desc,
+      doneCls: s.fdone[f.id] ? 'done' : '', actText: f.actText, act: f.act,
+      doneText: s.fdone[f.id] ? '取消完成' : f.doneText,
+      done: () => set({ fdone: Object.assign({}, s.fdone, { [f.id]: !s.fdone[f.id] }) })
+    }));
+
+    const Y = {
+      none: { cls: 'p', chip: '本人機動保留', msg: '尚未確定抵達時間。15:00 頭城場勘結束時確認是否直接前往；16:00 仍未處理，我會提出替代方案。' },
+      self: { cls: 's', chip: '本人處理中', msg: '已記錄：你稍後處理。16:00 我會再問你一次。' },
+      re: { cls: 'r', chip: '改派建議', msg: '建議阿盛＋阿東：阿盛今日待排，阿東楊梅支援完可轉場。確認後我會用 LINE 通知他們。' },
+      reDone: { cls: 'c', chip: '已改派', msg: '已改派給阿盛、阿東，並已通知他們。' },
+      vendor: { cls: 'v', chip: '已通知廠商', msg: '已請你傳訊息給廠商，我會追蹤回覆；16:00 仍無人到場會再提醒你。' },
+      done: { cls: 'c', chip: '已完成', msg: '已完成，已從今日必辦移除。' }
+    };
+    const Yc = Y[s.yuan || 'none'];
+
+    const titleMap = { chat: '寬林 AI 特助', today: '今日工作 11/9（一）', follow: '待我回覆', board: '人力排班', sites: '專案總覽' };
+    const decided = s.decision !== null;
+    const dupOr = (fn) => () => (decided ? set({ dup: true }) : fn());
+
+    return {
+      title: titleMap[s.screen],
+      notChat: s.screen !== 'chat',
+      isChat: s.screen === 'chat', isToday: s.screen === 'today', isFollow: s.screen === 'follow', isBoard: s.screen === 'board', isSites: s.screen === 'sites',
+      goChat: go('chat'), goToday: go('today'), goFollow: go('follow'), goBoard: () => set({ screen: 'board', tab: 'matrix', sheet: null }), goSites: go('sites'),
+      goPool: () => set({ screen: 'board', tab: 'pool', sheet: null }),
+      addTask: () => set({ showAdd: true, screen: 'chat' }),
+      helpFn: () => set({ showHelp: true, screen: 'chat' }),
+      doConfirm: dupOr(() => set({ decision: 'confirm', assignee: null, picked: null, showReassign: false, conflict: false })),
+      doLater: dupOr(() => set({ decision: 'later', picked: null, showReassign: false, conflict: false })),
+      doReassign: dupOr(() => set({ showReassign: true, conflict: false })),
+      pickLun: () => set({ picked: '阿倫', decision: 'confirm', assignee: '阿倫', showReassign: false, conflict: false }),
+      pickZe: () => set({ picked: '阿澤', decision: 'confirm', assignee: '阿澤', showReassign: false, conflict: false }),
+      pickJie: () => set({ picked: '阿杰', conflict: true }),
+      hasPicked: !!s.picked, picked: s.picked || '',
+      showReassign: s.showReassign && !confirmed,
+      hasConflict: s.conflict && !confirmed,
+      isConfirmed: confirmed, isLater: s.decision === 'later',
+      showDup: s.dup, showAdd: s.showAdd, showHelp: s.showHelp,
+      assignedName, isZe: assignedName === '阿澤', isEmp: assignedName !== '阿澤',
+      draftZe: openDraft('ze'),
+      resetDemo: () => set(Object.assign({}, DEF, { adopted: {}, fdone: {} })),
+      yuanCls: Yc.cls, yuanChip: Yc.chip, yuanMsg: Yc.msg, yuanIsRe: s.yuan === 're',
+      yuanSelf: () => set({ yuan: 'self' }), yuanRe: () => set({ yuan: 're' }), yuanVendor: openDraft('vendor'), yuanDone: () => set({ yuan: 'done' }),
+      yuanConfirmRe: () => set({ yuan: 'reDone' }),
+      follows,
+      tabM: s.tab === 'matrix' ? 'on' : '', tabP: s.tab === 'pool' ? 'on' : '', tabA: s.tab === 'avail' ? 'on' : '',
+      setTabM: () => set({ tab: 'matrix' }), setTabP: () => set({ tab: 'pool' }), setTabA: () => set({ tab: 'avail' }),
+      isMatrix: s.tab === 'matrix', isPool: s.tab === 'pool', isAvail: s.tab === 'avail',
+      viewW: s.view === 'week' ? 'on' : '', viewM: s.view === 'month' ? 'on' : '',
+      setViewW: () => set({ view: 'week' }), setViewM: () => set({ view: 'month' }),
+      isWeek: s.view === 'week', isMonth: s.view === 'month',
+      heads, rows, calCells, selLine, pool, avail,
+      toggleGuo: () => set({ guoOn: !s.guoOn }),
+      guoText: s.guoOn ? '取消啟用' : '啟用', guoState: s.guoOn ? '已啟用' : '未啟用',
+      callZe: openDraft('ze'),
+      hasCellSheet: !!(s.sheet && s.sheet.kind === 'cell'), hasDraftSheet: !!D,
+      sheetTitle: s.sheet && s.sheet.kind === 'cell' ? s.sheet.title : '', sheetWho: s.sheet && s.sheet.kind === 'cell' ? s.sheet.who : '',
+      sheetStatus: s.sheet && s.sheet.kind === 'cell' ? s.sheet.status : '', sheetCls: s.sheet && s.sheet.kind === 'cell' ? s.sheet.cls : 'off', sheetNote: s.sheet && s.sheet.kind === 'cell' ? s.sheet.note : '',
+      draftTitle: D ? D.title : '', draftText: D ? D.text : '',
+      draftSend: () => { const k = s.sheet.key; const extra = afterSend[k] ? afterSend[k]() : {}; set(Object.assign({ sheet: null }, extra)); say('已傳送'); },
+      draftCopy: () => say('已複製訊息'),
+      closeSheet: () => set({ sheet: null }),
+      hasToast: !!s.toast, toast: s.toast
+    };
+  }
+}
+</script>
+</body>
+</html>
