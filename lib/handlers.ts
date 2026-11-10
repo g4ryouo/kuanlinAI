@@ -2,15 +2,20 @@ import { db } from "./db.js";
 import { env } from "./env.js";
 import { extractTasks } from "./ai.js";
 import { dayInfo } from "./holidays.js";
+import { isEmptyItem } from "./draft.js";
 import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, VEHICLE_OPTIONS, needsWork, normalizeVehicle, workKind } from "./draft.js";
 import { shortError } from "./errors.js";
 import { menuReply } from "./menu.js";
+import { loadFollowupView } from "./followupData.js";
+import { saveFollowup } from "./followupActions.js";
+import { formatFollowups, formatToday } from "./summaries.js";
+import { loadTodayView } from "./todayData.js";
 import { syncLeaves } from "./syncLeaves.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
-import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
+import { MAX_PICK, confirmCard, followCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
 import { applyAutoRules, blockTexts, evaluateItems } from "./rules.js";
 import { loadRuleContext } from "./ruleContext.js";
-import type { LeaveNote } from "./types.js";
+import type { FollowUpDraft, LeaveNote } from "./types.js";
 import { transcribe, transcribePrompt } from "./transcribe.js";
 import { getAudioContent, getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
 import type { DraftItem } from "./types.js";
@@ -180,18 +185,49 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     env("ANTHROPIC_MODEL") || undefined,
   );
 
+  // ---- 問句：直接從資料庫回答，不建立任何草稿 ----
+  if (extraction.intent === "ask_followups") {
+    await reply(ev, withHeard([text(formatFollowups(await loadFollowupView(today)))]));
+    return;
+  }
+  if (extraction.intent === "ask_today") {
+    const asked = extraction.query_date && /^\d{4}-\d{2}-\d{2}$/.test(extraction.query_date) ? extraction.query_date : today;
+    await reply(ev, withHeard([text(formatToday(await loadTodayView(asked), asked === today))]));
+    return;
+  }
+
   const leaves = extraction.leaves.map((l) => ({ ...l, person_name: aliasMap.get(l.person.trim())?.name }));
 
-  if (!extraction.items.length) {
+  // ---- 要追蹤的事：先給冠璋確認，按了才寫進「待我回覆」 ----
+  const followMessages: LineMessage[] = [];
+  const followUps = sanitizeFollowUps(extraction.intent === "follow_up" ? extraction.follow_ups : []);
+  if (followUps.length) {
+    const { data: fdraft, error: ferr } = await db()
+      .from("drafts")
+      .insert({ raw_message_id: rawMessageId, line_user_id: userId, items: [], follow_ups: followUps })
+      .select("id")
+      .single();
+    if (ferr || !fdraft) throw ferr ?? new Error("follow-up draft insert failed");
+    followMessages.push(followCard(fdraft.id, followUps));
+  }
+
+  // 什麼都沒抓到的項目不產生確認卡
+  const realItems = extraction.items.filter((it) => !isEmptyItem({ ...it, person_ids: [] }));
+
+  if (!realItems.length) {
+    if (followMessages.length) {
+      await reply(ev, withHeard(followMessages));
+      return;
+    }
     if (leaves.length) {
       await reply(ev, withHeard([text(leaveText(leaves))]));
       return;
     }
-    await reply(ev, withHeard([text(extraction.question ?? "我沒有從這則訊息看到要排的工作。要新增任務的話，請附上案場和內容。")]));
+    await reply(ev, withHeard([text(extraction.question ?? "我沒有從這則訊息看到要排的工作或要追蹤的事。要新增工作的話，請附上案場和內容。")]));
     return;
   }
 
-  const resolvedItems: DraftItem[] = extraction.items.map((it) => {
+  const resolvedItems: DraftItem[] = realItems.map((it) => {
     const { resolved, unknown } = resolveNames(it.people, aliasMap);
     return { ...it, vehicle: normalizeVehicle(it.vehicle), person_ids: resolved.map((p) => p.id), person_names: resolved.map((p) => p.name), unknown_people: unknown };
   });
@@ -210,9 +246,25 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     .single();
   if (error || !draft) throw error ?? new Error("draft insert failed");
 
-  const messages: LineMessage[] = [confirmCard(draft.id, items, leaves, evaluateItems(items, ruleCtx))];
+  const messages: LineMessage[] = [confirmCard(draft.id, items, leaves, evaluateItems(items, ruleCtx)), ...followMessages];
   if (extraction.question) messages.unshift(text(extraction.question));
   await reply(ev, withHeard(messages));
+}
+
+/** AI 回來的追蹤事項：只留合法的、最多 5 件 */
+export function sanitizeFollowUps(list: FollowUpDraft[] | undefined): FollowUpDraft[] {
+  const ok = ["to_reply", "waiting_other", "flexible_hold"];
+  return (list ?? [])
+    .filter((f) => f && typeof f.title === "string" && f.title.trim() && ok.includes(f.status))
+    .slice(0, 5)
+    .map((f) => ({
+      title: f.title.trim().slice(0, 80),
+      status: f.status,
+      contact: f.contact ? String(f.contact).trim().slice(0, 40) || null : null,
+      site: f.site ? String(f.site).trim() || null : null,
+      due_date: f.due_date && /^\d{4}-\d{2}-\d{2}$/.test(f.due_date) ? f.due_date : null,
+      urgent: f.urgent === true,
+    }));
 }
 
 export async function handlePostback(ev: LineEvent): Promise<void> {
@@ -344,6 +396,49 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
     const items = applyAutoRules(picked, ctx);
     await db().from("drafts").update({ items }).eq("id", pb.d);
     await reply(ev, [text(`已改派給 ${selected.map((p) => p.name).join("、")}。`), confirmCard(pb.d, items, (draft.leaves ?? []) as LeaveNote[], evaluateItems(items, ctx))]);
+  }
+
+  if (pb.a === "fconfirm") {
+    const { data: draft } = await db()
+      .from("drafts")
+      .update({ status: "confirmed", handled_at: new Date().toISOString() })
+      .eq("id", pb.d)
+      .in("status", ["pending", "later"])
+      .select("follow_ups")
+      .maybeSingle();
+    if (!draft) return void (await done());
+    const list = sanitizeFollowUps(draft.follow_ups as FollowUpDraft[]);
+    const { data: siteRows } = await db().from("sites").select("id, name");
+    const siteId = new Map((siteRows ?? []).map((x: { id: string; name: string }) => [x.name, x.id]));
+    const count = { to_reply: 0, waiting_other: 0, flexible_hold: 0 } as Record<string, number>;
+    let failed = 0;
+    for (const f of list) {
+      const r = await saveFollowup(
+        { title: f.title, status: f.status, contact: f.contact, site_id: f.site ? siteId.get(f.site) ?? null : null, due_date: f.due_date, urgent: f.urgent },
+        ev.source?.userId ?? "unknown",
+      );
+      if (r.ok) count[f.status]++;
+      else failed++;
+    }
+    const parts = [
+      count.to_reply ? `待我回覆 ${count.to_reply} 件` : "",
+      count.waiting_other ? `等對方回覆 ${count.waiting_other} 件` : "",
+      count.flexible_hold ? `機動待辦 ${count.flexible_hold} 件` : "",
+    ].filter(Boolean);
+    await reply(ev, [text(`已加入追蹤：${parts.join("、") || "0 件"}。${failed ? `\n有 ${failed} 件資料不完整沒有加入。` : ""}\n可以在選單「待我回覆」查看。`)]);
+    return;
+  }
+
+  if (pb.a === "fskip") {
+    const { data } = await db()
+      .from("drafts")
+      .update({ status: "cancelled", handled_at: new Date().toISOString() })
+      .eq("id", pb.d)
+      .in("status", ["pending", "later"])
+      .select("id")
+      .maybeSingle();
+    await reply(ev, [text(data ? "好，不加入追蹤。" : "這張卡已經處理過了。")]);
+    return;
   }
 
   if (pb.a === "vehicle") {

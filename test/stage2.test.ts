@@ -78,7 +78,7 @@ describe("extractTasks", () => {
         : [{ type: "tool_use", name: "submit_tasks", input: { items: [], leaves: [], question: null } }];
       return new Response(JSON.stringify({ content }), { status: 200 });
     }) as typeof fetch;
-    expect(await extractTasks(input, "k", "m", fake)).toEqual({ items: [], leaves: [], question: null });
+    expect(await extractTasks(input, "k", "m", fake)).toEqual({ intent: "dispatch", query_date: null, follow_ups: [], items: [], leaves: [], question: null });
     expect(calls).toBe(2);
   });
 

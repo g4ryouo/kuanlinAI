@@ -36,6 +36,28 @@ const TOOL = {
           required: ["site", "work", "date", "time_slot", "people", "start_time", "end_time", "vehicle", "headcount", "priority", "fixed", "uncertain"],
         },
       },
+      intent: {
+        type: "string",
+        enum: ["dispatch", "ask_followups", "ask_today", "follow_up", "other"],
+        description: "這則訊息的意圖。問句（詢問）絕不要產生 items 或 follow_ups。",
+      },
+      query_date: { type: ["string", "null"], description: "intent 是 ask_today 時，要查的日期 YYYY-MM-DD；沒說就是今天" },
+      follow_ups: {
+        type: "array",
+        description: "intent 是 follow_up 時，老闆交代要追蹤的事",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "這件事是什麼，簡短，例如「回覆內湖店要不要加做」" },
+            status: { type: "string", enum: ["to_reply", "waiting_other", "flexible_hold"], description: "to_reply＝對方在等老闆回覆；waiting_other＝老闆在等對方回覆；flexible_hold＝老闆自己要處理但時間不定" },
+            contact: { type: ["string", "null"], description: "對方是誰（客戶、廠商），沒提就 null" },
+            site: { type: ["string", "null"], description: "相關案場，沒提就 null" },
+            due_date: { type: ["string", "null"], description: "YYYY-MM-DD，沒提就 null" },
+            urgent: { type: "boolean", description: "是否急件" },
+          },
+          required: ["title", "status", "contact", "site", "due_date", "urgent"],
+        },
+      },
       leaves: {
         type: "array",
         description: "訊息中提到請假或休假的人。請假不是工作，不要放進 items。",
@@ -50,7 +72,7 @@ const TOOL = {
       },
       question: { type: ["string", "null"], description: "資訊不足以整理時，要問冠璋的一句繁體中文問題；否則 null" },
     },
-    required: ["items", "leaves", "question"],
+    required: ["intent", "query_date", "follow_ups", "items", "leaves", "question"],
   },
 } as const;
 
@@ -60,6 +82,13 @@ function systemPrompt(i: ExtractInput): string {
     `今天是 ${i.today}（星期${i.weekday}），時區台北。「明天」「下週一」等相對日期請換算成 YYYY-MM-DD。`,
     `已知人員稱呼：${i.aliases.join("、")}。`,
     `已知案場：${i.sites.join("、")}。`,
+    "先判斷 intent：",
+    "- dispatch：要新增或安排工作（派誰去哪裡做什麼）。",
+    "- ask_followups：老闆在「詢問」自己有哪些要回覆、在等誰回覆、有沒有急件或機動待辦（例如「我有什麼要回覆的？」「有沒有急件？」「我在等誰？」）。",
+    "- ask_today：老闆在「詢問」某天誰去哪、有什麼工作（例如「今天有什麼工作？」「明天誰請假？」），query_date 填那天，沒說就是今天。",
+    "- follow_up：老闆在交代一件「要追蹤的事」：要回覆某人、在等某人回覆、或自己要處理但時間不定。請放進 follow_ups，不要放進 items。",
+    "- other：閒聊、問候或看不懂。",
+    "問句（詢問）絕對不要產生 items 或 follow_ups，items 與 follow_ups 都回空陣列。",
     "規則：",
     "- 不確定就填 null 並把欄位名稱放進 uncertain，不要自行假設（例如「師傅」是誰）。",
     "- people 只放訊息裡出現的稱呼原文，不要推測沒提到的人。",
@@ -105,7 +134,15 @@ export async function extractTasks(
     const data = (await res.json()) as { content?: { type: string; name?: string; input?: Extraction }[] };
     const block = data.content?.find((b) => b.type === "tool_use" && b.name === TOOL.name);
     if (block?.input) {
-      return { items: block.input.items ?? [], leaves: block.input.leaves ?? [], question: block.input.question ?? null };
+      const inp = block.input;
+      return {
+        intent: inp.intent ?? "dispatch",
+        query_date: inp.query_date ?? null,
+        follow_ups: inp.follow_ups ?? [],
+        items: inp.items ?? [],
+        leaves: inp.leaves ?? [],
+        question: inp.question ?? null,
+      };
     }
 
     messages.push({ role: "assistant", content: data.content ?? [] });

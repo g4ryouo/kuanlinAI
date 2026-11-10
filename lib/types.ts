@@ -26,7 +26,22 @@ export interface LeaveNote {
   person_name?: string; // 對應到的正式姓名
 }
 
+export type Intent = "dispatch" | "ask_followups" | "ask_today" | "follow_up" | "other";
+
+/** 聊天室判斷出的「要追蹤的事」，確認後才寫進任務 */
+export interface FollowUpDraft {
+  title: string;
+  status: "to_reply" | "waiting_other" | "flexible_hold";
+  contact: string | null;
+  site: string | null;
+  due_date: string | null; // YYYY-MM-DD
+  urgent: boolean;
+}
+
 export interface Extraction {
+  intent: Intent;
+  query_date: string | null; // 問「某天的工作」時的那天
+  follow_ups: FollowUpDraft[];
   items: DraftItem[];
   leaves: LeaveNote[]; // 偵測到的請假，只提示，不寫入
   question: string | null; // 資訊不足時要問冠璋的一句話
