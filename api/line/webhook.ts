@@ -1,6 +1,6 @@
-import { allowedUserIds, env } from "../../lib/env";
-import { db } from "../../lib/db";
-import { replyText, verifySignature, type LineEvent } from "../../lib/line";
+import { allowedUserIds, env } from "../../lib/env.js";
+import { db } from "../../lib/db.js";
+import { replyText, verifySignature, type LineEvent } from "../../lib/line.js";
 
 export async function GET(): Promise<Response> {
   return new Response("ok");

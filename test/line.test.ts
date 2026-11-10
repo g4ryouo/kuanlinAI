@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { verifySignature } from "../lib/line";
+import { verifySignature } from "../lib/line.js";
 
 const secret = "test-secret";
 const body = JSON.stringify({ events: [] });
