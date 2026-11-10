@@ -21,6 +21,7 @@ export interface SiteRow {
   risks: string | null;
   open_issues: string | null;
   updated_at: string;
+  archived_at?: string | null;
   people: { name: string; nickname: string | null } | null;
 }
 
@@ -52,6 +53,8 @@ export interface SiteCard {
   last_activity: string; // YYYY-MM-DD
   days_idle: number;
   stale: boolean;
+  archived: boolean; // 已結案
+  task_count: number; // 有幾筆工作紀錄；0 才能真的刪除
 }
 
 const DAY = 86_400_000;
@@ -64,8 +67,10 @@ export function shapeSites(sites: SiteRow[], tasks: SiteTaskRow[], today: string
     let last = ymd(s.updated_at);
     let upcoming = 0;
     let pool = 0;
+    let taskCount = 0;
     for (const t of tasks) {
       if (t.site_id !== s.id) continue;
+      taskCount++;
       if (ymd(t.created_at) > last) last = ymd(t.created_at);
       if (t.status === "to_handle" && t.assignments.length === 0) pool++;
       for (const a of t.assignments) {
@@ -82,12 +87,15 @@ export function shapeSites(sites: SiteRow[], tasks: SiteTaskRow[], today: string
       lead_name: s.people ? s.people.nickname || s.people.name : null,
       headcount_need: s.headcount_need, deadline: s.deadline, days_to_deadline: s.deadline ? days(s.deadline, today) : null,
       flexible: s.flexible, risks: s.risks, open_issues: s.open_issues,
-      upcoming_people_days: upcoming, pool_count: pool, last_activity: last, days_idle: idle, stale: idle > STALE_DAYS,
+      upcoming_people_days: upcoming, pool_count: pool, last_activity: last, days_idle: idle,
+      archived: !!s.archived_at, task_count: taskCount,
+      stale: !s.archived_at && idle > STALE_DAYS, // 已結案的不需要提醒更新
     };
   });
-  // 近期有排班的在前；其次是久未更新的；最後依名稱
+  // 進行中的在前；近期有排班的在前；其次是久未更新的；最後依名稱
   return cards.sort(
     (a, b) =>
+      Number(a.archived) - Number(b.archived) ||
       Number(b.upcoming_people_days > 0) - Number(a.upcoming_people_days > 0) ||
       Number(b.stale) - Number(a.stale) ||
       a.name.localeCompare(b.name, "zh-Hant"),

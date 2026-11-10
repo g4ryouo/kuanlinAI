@@ -10,7 +10,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const { data: sites, error: e1 } = await db()
       .from("sites")
-      .select("id, name, region, stage, start_date, end_date, lead_person_id, headcount_need, deadline, flexible, risks, open_issues, updated_at, people(name, nickname)");
+      .select("id, name, region, stage, start_date, end_date, lead_person_id, headcount_need, deadline, flexible, risks, open_issues, updated_at, archived_at, people(name, nickname)");
     if (e1) throw e1;
     const { data: tasks, error: e2 } = await db()
       .from("tasks")

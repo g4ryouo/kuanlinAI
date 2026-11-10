@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { deleteSite, setArchived } from "../lib/siteActions.js";
 import { shapeSites, validateSiteInput, type SiteRow, type SiteTaskRow } from "../lib/sites.js";
 
 const TODAY = "2026-11-10";
@@ -111,5 +112,45 @@ describe("the sites page", () => {
   });
   it("shows the stale warning in words", () => {
     expect(html).toContain("天沒更新");
+  });
+});
+
+describe("closing out a site (結案)", () => {
+  it("flags archived sites, stops nagging about them, and lists them after active sites", () => {
+    const cards = shapeSites(
+      [site({ id: "old", name: "舊案", updated_at: "2026-06-01T00:00:00Z", archived_at: "2026-07-01T00:00:00Z" }), site({ id: "new", name: "新案" })],
+      [], TODAY,
+    );
+    expect(cards.map((c) => c.name)).toEqual(["新案", "舊案"]);
+    expect(cards[1]).toMatchObject({ archived: true, stale: false });
+    expect(cards[0].archived).toBe(false);
+  });
+  it("counts how many task records a site has, so only record-less sites can be deleted", () => {
+    const [a, b] = shapeSites([site({ id: "a", name: "A" }), site({ id: "b", name: "B" })], [task("a"), task("a", { status: "done" })], TODAY);
+    expect(a.task_count).toBe(2);
+    expect(b.task_count).toBe(0);
+  });
+  it("rejects malformed ids before touching the database", async () => {
+    expect(await setArchived("nope", true, "u")).toMatchObject({ ok: false, status: 400 });
+    expect(await deleteSite("nope", "u")).toMatchObject({ ok: false, status: 400 });
+  });
+  it("the migration adds the archive marker", () => {
+    expect(readFileSync(new URL("../supabase/migrations/0010_site_archive.sql", import.meta.url), "utf8")).toContain("archived_at");
+  });
+});
+
+describe("the sites page: closing and deleting", () => {
+  const html = readFileSync(new URL("../liff/sites.html", import.meta.url), "utf8");
+  it("uses explicit buttons with a confirmation (no swipe or long-press gestures)", () => {
+    expect(html).toContain("window.confirm(");
+    expect(html).toContain("/api/liff/site-archive");
+    expect(html).toContain("/api/liff/site-delete");
+    expect(html).toContain("重新開啟");
+    expect(html).not.toMatch(/touchstart|touchmove|contextmenu|longpress/i);
+  });
+  it("only offers delete for sites without any records, and has a 已結案 tab", () => {
+    expect(html).toContain("s.task_count === 0");
+    expect(html).toContain('id="fDone"');
+    expect(html).toContain("歷史排班與紀錄都會保留");
   });
 });

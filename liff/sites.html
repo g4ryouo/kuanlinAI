@@ -49,6 +49,8 @@ main{padding:12px;max-width:720px;margin:0 auto}
 .chk input{width:22px;height:22px}
 .err{color:var(--red);font-size:14px;min-height:1.4em;margin:0 0 8px}
 .actions{display:flex;gap:8px}.actions .btn{flex:1}
+.actions.more{margin-top:10px}
+.btn.danger{color:var(--red);border-color:var(--red)}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;max-width:90vw;display:none;z-index:20}
 #toast.show{display:block}
 </style>
@@ -61,9 +63,10 @@ main{padding:12px;max-width:720px;margin:0 auto}
   </div>
   <div class="ctl">
     <div class="seg" role="group" aria-label="篩選">
-      <button id="fAll" aria-pressed="true">全部</button>
+      <button id="fAll" aria-pressed="true">進行中</button>
       <button id="fSoon" aria-pressed="false">近期有排班</button>
       <button id="fStale" aria-pressed="false">久未更新</button>
+      <button id="fDone" aria-pressed="false">已結案</button>
     </div>
     <button class="btn primary" id="add">新增案場</button>
   </div>
@@ -100,10 +103,14 @@ main{padding:12px;max-width:720px;margin:0 auto}
 
   function render() {
     var list = data.sites.filter(function (s) {
+      if (filter === 'done') return s.archived;
+      if (s.archived) return false;
       return filter === 'all' || (filter === 'soon' && s.upcoming_people_days > 0) || (filter === 'stale' && s.stale);
     });
+    var doneCount = data.sites.filter(function (s) { return s.archived; }).length;
+    document.getElementById('fDone').textContent = '已結案' + (doneCount ? '（' + doneCount + '）' : '');
     var frag = document.createDocumentFragment();
-    if (!list.length) frag.appendChild(el('p', 'msg', filter === 'all' ? '還沒有案場，按「新增案場」建立' : '沒有符合的案場'));
+    if (!list.length) frag.appendChild(el('p', 'msg', filter === 'all' ? '還沒有進行中的案場，按「新增案場」建立' : filter === 'done' ? '還沒有結案的案場' : '沒有符合的案場'));
     list.forEach(function (s) {
       var c = el('section', 'card');
       c.appendChild(el('h2', null, s.name));
@@ -111,6 +118,7 @@ main{padding:12px;max-width:720px;margin:0 auto}
       if (s.stage_label) chips.appendChild(el('span', 'chip st-' + s.stage, s.stage_label));
       if (s.region) chips.appendChild(el('span', 'chip', s.region));
       if (s.stale) chips.appendChild(el('span', 'chip stale', '超過 ' + s.days_idle + ' 天沒更新'));
+      if (s.archived) chips.appendChild(el('span', 'chip', '已結案'));
       if (!s.flexible) chips.appendChild(el('span', 'chip', '時程不可彈性'));
       c.appendChild(chips);
       if (s.start_date || s.end_date) c.appendChild(row('期間', (s.start_date ? md(s.start_date) : '？') + ' – ' + (s.end_date ? md(s.end_date) : '？')));
@@ -191,6 +199,33 @@ main{padding:12px;max-width:720px;margin:0 auto}
       }).catch(function () { err.textContent = '連線失敗，請稍後再試'; save.disabled = false; });
     };
     act.appendChild(cancel); act.appendChild(save); sheet.appendChild(act);
+    if (!creating) {
+      var more = el('div', 'actions more');
+      var toggle = el('button', 'btn', s.archived ? '重新開啟' : '結案');
+      toggle.onclick = function () {
+        var msg = s.archived ? '要重新開啟「' + s.name + '」嗎？' : '確定要結案「' + s.name + '」嗎？結案後會移到「已結案」，歷史排班與紀錄都會保留，隨時可以重新開啟。';
+        if (!window.confirm(msg)) return;
+        toggle.disabled = true;
+        api('POST', '/api/liff/site-archive', { id: s.id, archived: !s.archived }).then(function (res) {
+          if (res.status === 200) { closeSheet(true); toast(s.archived ? '已重新開啟' : '已結案'); load(); }
+          else { err.textContent = res.body.error || '處理失敗'; toggle.disabled = false; }
+        }).catch(function () { err.textContent = '連線失敗，請稍後再試'; toggle.disabled = false; });
+      };
+      more.appendChild(toggle);
+      if (s.task_count === 0) {
+        var del = el('button', 'btn danger', '刪除（沒有任何紀錄）');
+        del.onclick = function () {
+          if (!window.confirm('確定要刪除「' + s.name + '」嗎？這個案場沒有任何工作紀錄，刪除後無法復原。')) return;
+          del.disabled = true;
+          api('POST', '/api/liff/site-delete', { id: s.id }).then(function (res) {
+            if (res.status === 200) { closeSheet(true); toast('已刪除'); load(); }
+            else { err.textContent = res.body.error || '刪除失敗'; del.disabled = false; }
+          }).catch(function () { err.textContent = '連線失敗，請稍後再試'; del.disabled = false; });
+        };
+        more.appendChild(del);
+      }
+      sheet.appendChild(more);
+    }
     document.getElementById('shade').className = 'open';
     sheet.className = 'open';
     name.focus();
@@ -205,12 +240,13 @@ main{padding:12px;max-width:720px;margin:0 auto}
 
   function setFilter(f) {
     filter = f;
-    [['fAll', 'all'], ['fSoon', 'soon'], ['fStale', 'stale']].forEach(function (p) { document.getElementById(p[0]).setAttribute('aria-pressed', String(f === p[1])); });
+    [['fAll', 'all'], ['fSoon', 'soon'], ['fStale', 'stale'], ['fDone', 'done']].forEach(function (p) { document.getElementById(p[0]).setAttribute('aria-pressed', String(f === p[1])); });
     if (data) render();
   }
   document.getElementById('fAll').onclick = function () { setFilter('all'); };
   document.getElementById('fSoon').onclick = function () { setFilter('soon'); };
   document.getElementById('fStale').onclick = function () { setFilter('stale'); };
+  document.getElementById('fDone').onclick = function () { setFilter('done'); };
   document.getElementById('add').onclick = function () { lastFocus = document.getElementById('add'); if (data) openForm(null); };
 
   function load() {
