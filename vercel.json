@@ -9,7 +9,7 @@
     "api/liff.ts": {
       "maxDuration": 60
     },
-    "api/cron/morning.ts": {
+    "api/cron/remind.ts": {
       "maxDuration": 60
     }
   },
@@ -19,8 +19,8 @@
       "schedule": "0 22 * * *"
     },
     {
-      "path": "/api/cron/morning",
-      "schedule": "30 23 * * *"
+      "path": "/api/cron/remind?kind=morning",
+      "schedule": "0 23 * * *"
     }
   ],
   "rewrites": [

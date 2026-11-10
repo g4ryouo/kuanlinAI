@@ -91,14 +91,16 @@ describe("when to stay quiet", () => {
 });
 
 describe("recipients and de-duplication", () => {
-  it("uses BRIEF_USER_IDS when set, otherwise the allowlist", () => {
-    const allowed = new Set(["Ua", "Ub"]);
-    expect(pickRecipients("", allowed)).toEqual(["Ua", "Ub"]);
-    expect(pickRecipients(" Ub , Ub,Uc ", allowed)).toEqual(["Ub", "Uc"]);
+  it("sends only to BRIEF_USER_IDS when set, otherwise only to the owner, and to nobody if neither exists", () => {
+    expect(pickRecipients("", ["Uboss"])).toEqual(["Uboss"]);
+    expect(pickRecipients(" Ub , Ub,Uc ", ["Uboss"])).toEqual(["Ub", "Uc"]);
+    expect(pickRecipients("", [])).toEqual([]);
+    expect(pickRecipients("", ["", "Uboss"])).toEqual(["Uboss"]);
   });
-  it("builds one key per person per day, and a distinct key only for deliberate resends", () => {
+  it("builds one key per person per day per kind, and a distinct key only for deliberate resends", () => {
     expect(dedupeKey("2026-11-10", "Ua")).toBe("morning:2026-11-10:Ua");
-    expect(dedupeKey("2026-11-10", "Ua")).toBe(dedupeKey("2026-11-10", "Ua"));
+    expect(dedupeKey("2026-11-10", "Ua", undefined, "arrive")).toBe("arrive:2026-11-10:Ua");
+    expect(dedupeKey("2026-11-10", "Ua", undefined, "arrive")).not.toBe(dedupeKey("2026-11-10", "Ua", undefined, "done"));
     expect(dedupeKey("2026-11-10", "Ua", 123)).not.toBe(dedupeKey("2026-11-10", "Ua"));
     expect(dedupeKey("2026-11-11", "Ua")).not.toBe(dedupeKey("2026-11-10", "Ua"));
   });
@@ -106,25 +108,40 @@ describe("recipients and de-duplication", () => {
 
 describe("scheduling", () => {
   const v = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
-  it("runs the morning brief at 07:30 Taipei (= 23:30 UTC the day before)", () => {
-    const c = v.crons.find((x: { path: string }) => x.path === "/api/cron/morning");
-    expect(c.schedule).toBe("30 23 * * *");
-    const [min, hour] = c.schedule.split(" ").map(Number);
-    expect(((hour + 8) % 24) * 60 + min).toBe(7 * 60 + 30);
+  const taipei = (schedule: string) => {
+    const [min, hour] = schedule.split(" ").map(Number);
+    return `${String((hour + 8) % 24).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  };
+  it("runs the morning brief at 07:00 Taipei (= 23:00 UTC the day before) on Vercel's built-in cron", () => {
+    const c = v.crons.find((x: { path: string }) => x.path === "/api/cron/remind?kind=morning");
+    expect(c.schedule).toBe("0 23 * * *");
+    expect(taipei(c.schedule)).toBe("07:00");
   });
-  it("keeps every cron at most once a day (the Hobby plan limit)", () => {
+  it("keeps every cron at most once a day (the Hobby plan limit), with the leave sync before the brief", () => {
     for (const c of v.crons) expect(c.schedule, c.path).toMatch(/^\d+ \d+ \* \* \*$/);
+    const sync = v.crons.find((x: { path: string }) => x.path === "/api/cron/sync-leaves");
+    expect(taipei(sync.schedule) < "07:00").toBe(true);
   });
-  it("documents the alternatives", () => {
+  it("documents the Supabase schedule for 10:00, 16:00 and 20:00 with the right UTC times", () => {
     const doc = readFileSync(new URL("../docs/scheduling.md", import.meta.url), "utf8");
-    for (const w of ["pg_cron", "GitHub Actions", "Vercel Pro", "10:00", "16:00", "20:00", "23:30"]) expect(doc).toContain(w);
+    for (const w of ["pg_cron", "kind=arrive", "kind=done", "kind=evening", "'0 2 * * *'", "'0 8 * * *'", "'0 12 * * *'", "net.http_get", "vault"]) expect(doc).toContain(w);
+    expect(taipei("0 2 * * *")).toBe("10:00");
+    expect(taipei("0 8 * * *")).toBe("16:00");
+    expect(taipei("0 12 * * *")).toBe("20:00");
   });
 });
 
 describe("the cron endpoint", () => {
-  it("refuses callers without the secret", async () => {
-    const { GET } = await import("../api/cron/morning.js");
-    expect((await GET(new Request("http://x/api/cron/morning"))).status).toBe(401);
-    expect((await GET(new Request("http://x/api/cron/morning", { headers: { authorization: "Bearer nope" } }))).status).toBe(401);
+  it("refuses callers without the secret and rejects unknown kinds", async () => {
+    const { GET } = await import("../api/cron/remind.js");
+    expect((await GET(new Request("http://x/api/cron/remind?kind=morning"))).status).toBe(401);
+    expect((await GET(new Request("http://x/api/cron/remind", { headers: { authorization: "Bearer nope" } }))).status).toBe(401);
+    process.env.CRON_SECRET = "s3cret";
+    try {
+      const bad = await GET(new Request("http://x/api/cron/remind?kind=lunch", { headers: { authorization: "Bearer s3cret" } }));
+      expect(bad.status).toBe(400);
+    } finally {
+      delete process.env.CRON_SECRET;
+    }
   });
 });
