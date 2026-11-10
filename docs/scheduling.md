@@ -47,31 +47,37 @@
    select cron.schedule('remind-arrive', '0 2 * * *', $$
      select net.http_get(
        url := 'https://kuanlinai.vercel.app/api/cron/remind?kind=arrive',
-       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'))
+       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       timeout_milliseconds := 30000
      );
    $$);
 
    select cron.schedule('remind-done', '0 8 * * *', $$
      select net.http_get(
        url := 'https://kuanlinai.vercel.app/api/cron/remind?kind=done',
-       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'))
+       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       timeout_milliseconds := 30000
      );
    $$);
 
    select cron.schedule('remind-morning-weekend', '0 2 * * 6,0', $$
      select net.http_get(
        url := 'https://kuanlinai.vercel.app/api/cron/remind?kind=morning',
-       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'))
+       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       timeout_milliseconds := 30000
      );
    $$);
 
    select cron.schedule('remind-evening', '0 12 * * *', $$
      select net.http_get(
        url := 'https://kuanlinai.vercel.app/api/cron/remind?kind=evening',
-       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'))
+       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       timeout_milliseconds := 30000
      );
    $$);
    ```
+> `timeout_milliseconds := 30000`：pg_net 預設只等 5 秒，Vercel 冷啟動加查資料庫可能超過，會被誤判為失敗。
+
 4. 查看、停用、查執行結果：
    ```sql
    select jobid, jobname, schedule, active from cron.job;
