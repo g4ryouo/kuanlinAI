@@ -38,6 +38,16 @@ export async function getImageContent(
   return { mediaType, base64: buf.toString("base64"), bytes: buf.length };
 }
 
+/** 下載使用者傳來的語音（LINE 語音是 m4a） */
+export async function getAudioContent(messageId: string, accessToken: string): Promise<{ audio: Buffer; bytes: number }> {
+  const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`LINE content ${res.status}`);
+  const audio = Buffer.from(await res.arrayBuffer());
+  return { audio, bytes: audio.length };
+}
+
 export async function replyText(replyToken: string, text: string, accessToken: string): Promise<void> {
   const res = await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
@@ -53,6 +63,6 @@ export interface LineEvent {
   replyToken?: string;
   timestamp?: number;
   source?: { type: string; userId?: string };
-  message?: { id: string; type: string; text?: string };
+  message?: { id: string; type: string; text?: string; duration?: number };
   postback?: { data: string };
 }

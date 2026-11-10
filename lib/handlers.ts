@@ -9,10 +9,13 @@ import { resolveNames, type AliasMap } from "./aliases.js";
 import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
 import { applyAutoRules, blockTexts, evaluateItems, hasBlock, type ExistingAssignment, type PersonInfo, type RuleContext } from "./rules.js";
 import type { LeaveNote } from "./types.js";
-import { getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
+import { transcribe, transcribePrompt } from "./transcribe.js";
+import { getAudioContent, getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
 import type { DraftItem } from "./types.js";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_MS = 3 * 60 * 1000; // 語音最長 3 分鐘
 
 function reply(ev: LineEvent, messages: LineMessage[]) {
   if (!ev.replyToken) return Promise.resolve();
@@ -104,7 +107,7 @@ async function tryFillWork(ev: LineEvent, userId: string, content: string): Prom
     needsWork(it) ? { ...it, work: content, uncertain: it.uncertain.filter((f) => f !== "work") } : it,
   );
   await db().from("drafts").update({ items, awaiting_work_at: null }).eq("id", data.id);
-  await reply(ev, [text("已填上工作內容。"), await renderCard(data.id, items, (data.leaves ?? []) as LeaveNote[])]);
+  await reply(ev, [text(`已填上工作內容：${content}`), await renderCard(data.id, items, (data.leaves ?? []) as LeaveNote[])]);
   return true;
 }
 
@@ -112,8 +115,8 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
   const msg = ev.message;
   const userId = ev.source?.userId;
   if (!msg || !userId) return;
-  if (msg.type !== "text" && msg.type !== "image") {
-    await reply(ev, [text("目前先支援文字和圖片，語音之後再開放。")]);
+  if (msg.type !== "text" && msg.type !== "image" && msg.type !== "audio") {
+    await reply(ev, [text("目前支援文字、圖片和語音。")]);
     return;
   }
 
@@ -135,8 +138,46 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     return;
   }
 
-  if (msg.type === "text" && msg.text && msg.text.trim().length <= MAX_WORK_TEXT) {
-    if (await tryFillWork(ev, userId, msg.text.trim())) return;
+  const aliasMap = await loadAliasMap();
+  const { data: sites } = await db().from("sites").select("name");
+  const siteNames = (sites ?? []).map((s: { name: string }) => s.name);
+
+  // 文字直接用；語音先轉成文字，之後走同一條流程
+  let inputText: string | undefined = msg.type === "text" ? msg.text : undefined;
+  let heard: string | null = null;
+  if (msg.type === "audio") {
+    if (!env("OPENAI_API_KEY")) {
+      await reply(ev, [text("語音辨識還沒設定完成，請先用文字或照片。")]);
+      return;
+    }
+    if ((msg.duration ?? 0) > MAX_AUDIO_MS) {
+      await reply(ev, [text("語音太長了（超過 3 分鐘），請分段傳，或改用文字。")]);
+      return;
+    }
+    const { audio, bytes } = await getAudioContent(msg.id, env("LINE_CHANNEL_ACCESS_TOKEN"));
+    if (bytes > MAX_AUDIO_BYTES) {
+      await reply(ev, [text("語音檔太大，請分段傳，或改用文字。")]);
+      return;
+    }
+    const spoken = await transcribe(
+      audio,
+      env("OPENAI_API_KEY"),
+      transcribePrompt([...aliasMap.keys()], siteNames),
+      env("OPENAI_TRANSCRIBE_MODEL") || undefined,
+    );
+    if (!spoken) {
+      await reply(ev, [text("我沒有聽清楚，請再說一次，或改用文字。")]);
+      return;
+    }
+    inputText = spoken;
+    heard = spoken;
+  }
+  // 讓使用者核對辨識結果
+  const withHeard = (messages: LineMessage[]): LineMessage[] =>
+    heard ? [text(`我聽到：「${heard}」\n如果聽錯了，請直接打字更正後重傳。`), ...messages] : messages;
+
+  if (inputText && inputText.trim().length <= MAX_WORK_TEXT) {
+    if (await tryFillWork(ev, userId, inputText.trim())) return;
   }
 
   let image: { mediaType: string; base64: string } | undefined;
@@ -149,18 +190,16 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     image = img;
   }
 
-  const aliasMap = await loadAliasMap();
-  const { data: sites } = await db().from("sites").select("name");
   const { today, weekday } = taipeiToday();
 
   const extraction = await extractTasks(
     {
-      text: msg.text,
+      text: inputText,
       image,
       today,
       weekday,
       aliases: [...aliasMap.keys()],
-      sites: (sites ?? []).map((s: { name: string }) => s.name),
+      sites: siteNames,
     },
     env("ANTHROPIC_API_KEY"),
     env("ANTHROPIC_MODEL") || undefined,
@@ -170,10 +209,10 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
 
   if (!extraction.items.length) {
     if (leaves.length) {
-      await reply(ev, [text(leaveText(leaves))]);
+      await reply(ev, withHeard([text(leaveText(leaves))]));
       return;
     }
-    await reply(ev, [text(extraction.question ?? "我沒有從這則訊息看到要排的工作。要新增任務的話，請附上案場和內容。")]);
+    await reply(ev, withHeard([text(extraction.question ?? "我沒有從這則訊息看到要排的工作。要新增任務的話，請附上案場和內容。")]));
     return;
   }
 
@@ -198,7 +237,7 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
 
   const messages: LineMessage[] = [confirmCard(draft.id, items, leaves, evaluateItems(items, ruleCtx))];
   if (extraction.question) messages.unshift(text(extraction.question));
-  await reply(ev, messages);
+  await reply(ev, withHeard(messages));
 }
 
 export async function handlePostback(ev: LineEvent): Promise<void> {
