@@ -5,6 +5,9 @@
     },
     "api/cron/sync-leaves.ts": {
       "maxDuration": 60
+    },
+    "api/liff.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -14,6 +17,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/liff/:route",
+      "destination": "/api/liff?route=:route"
+    },
     {
       "source": "/liff",
       "destination": "/liff/index.html"

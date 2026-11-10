@@ -1,4 +1,4 @@
-import { env } from "../../lib/env.js";
+import { env } from "../env.js";
 
 /** 前端需要的公開設定（LIFF ID 不是機密） */
 export async function GET(): Promise<Response> {

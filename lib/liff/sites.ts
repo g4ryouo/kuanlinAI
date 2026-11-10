@@ -1,6 +1,6 @@
-import { db } from "../../lib/db.js";
-import { authorize } from "../../lib/liffAuth.js";
-import { shapeSites, type SiteRow, type SiteTaskRow } from "../../lib/sites.js";
+import { db } from "../db.js";
+import { authorize } from "../liffAuth.js";
+import { shapeSites, type SiteRow, type SiteTaskRow } from "../sites.js";
 
 export async function GET(request: Request): Promise<Response> {
   const auth = await authorize(request);

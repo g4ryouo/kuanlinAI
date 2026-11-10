@@ -1,5 +1,5 @@
-import { authorize } from "../../lib/liffAuth.js";
-import { saveFollowup } from "../../lib/followupActions.js";
+import { authorize } from "../liffAuth.js";
+import { saveFollowup } from "../followupActions.js";
 
 export async function POST(request: Request): Promise<Response> {
   const auth = await authorize(request);

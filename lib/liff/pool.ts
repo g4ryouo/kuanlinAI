@@ -1,9 +1,9 @@
-import { db } from "../../lib/db.js";
-import type { BoardPerson } from "../../lib/board.js";
-import { hasCalendar } from "../../lib/holidays.js";
-import { authorize } from "../../lib/liffAuth.js";
-import { shapeAvailable, shapePool } from "../../lib/pool.js";
-import type { PoolTask } from "../../lib/suggest.js";
+import { db } from "../db.js";
+import type { BoardPerson } from "../board.js";
+import { hasCalendar } from "../holidays.js";
+import { authorize } from "../liffAuth.js";
+import { shapeAvailable, shapePool } from "../pool.js";
+import type { PoolTask } from "../suggest.js";
 
 const DAYS = 14;
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);

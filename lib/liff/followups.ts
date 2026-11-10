@@ -1,6 +1,6 @@
-import { db } from "../../lib/db.js";
-import { shapeFollowups, type FollowRow } from "../../lib/followups.js";
-import { authorize } from "../../lib/liffAuth.js";
+import { db } from "../db.js";
+import { shapeFollowups, type FollowRow } from "../followups.js";
+import { authorize } from "../liffAuth.js";
 
 export async function GET(request: Request): Promise<Response> {
   const auth = await authorize(request);

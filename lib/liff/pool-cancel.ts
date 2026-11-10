@@ -1,5 +1,5 @@
-import { authorize } from "../../lib/liffAuth.js";
-import { cancelTask } from "../../lib/poolActions.js";
+import { authorize } from "../liffAuth.js";
+import { cancelTask } from "../poolActions.js";
 
 export async function POST(request: Request): Promise<Response> {
   const auth = await authorize(request);
