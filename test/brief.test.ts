@@ -114,11 +114,11 @@ describe("scheduling", () => {
   };
   it("runs the morning brief at 07:00 Taipei (= 23:00 UTC the day before) on Vercel's built-in cron", () => {
     const c = v.crons.find((x: { path: string }) => x.path === "/api/cron/remind?kind=morning");
-    expect(c.schedule).toBe("0 23 * * *");
+    expect(c.schedule).toBe("0 23 * * 0-4"); // UTC 週日至週四 = 台北週一至週五
     expect(taipei(c.schedule)).toBe("07:00");
   });
   it("keeps every cron at most once a day (the Hobby plan limit), with the leave sync before the brief", () => {
-    for (const c of v.crons) expect(c.schedule, c.path).toMatch(/^\d+ \d+ \* \* \*$/);
+    for (const c of v.crons) expect(c.schedule, c.path).toMatch(/^\d+ \d+ \* \* (\*|[0-6](-[0-6])?)$/);
     const sync = v.crons.find((x: { path: string }) => x.path === "/api/cron/sync-leaves");
     expect(taipei(sync.schedule) < "07:00").toBe(true);
   });

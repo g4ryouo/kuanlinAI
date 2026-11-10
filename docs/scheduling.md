@@ -1,6 +1,6 @@
 # 定時提醒的排程方案
 
-寬林要的推播時間：**07:30 早晨簡報**、10:00 抵達確認、16:00 完工確認、20:00 明日預覽與待處理。
+寬林要的推播時間：**平日 07:00、週六日 10:00 早晨簡報**、10:00 抵達確認、16:00 完工確認、20:00 明日預覽與待處理。
 所有排程都是呼叫同一類網址（`/api/cron/remind?kind=<種類>`），並帶 `Authorization: Bearer <CRON_SECRET>`；
 推播有 `reminders.dedupe_key` 去重，**同一天同一個人只會收到一次**，所以同時開兩種排程也不會重複。
 
@@ -8,7 +8,8 @@
 
 | 台北時間 | UTC（cron 寫法） |
 |---|---|
-| 07:30 | `30 23 * * *`（前一天 23:30） |
+| 07:00 | `0 23 * * 0-4`（UTC 週日至週四，即台北週一至週五） |
+| 週六日 10:00 | `0 2 * * 6,0` |
 | 10:00 | `0 2 * * *` |
 | 16:00 | `0 8 * * *` |
 | 20:00 | `0 12 * * *` |
@@ -18,7 +19,8 @@
 | 台北時間 | 提醒 | 排程方式 | 網址 |
 |---|---|---|---|
 | 06:00 | 請假表同步 | Vercel 內建 | `/api/cron/sync-leaves` |
-| **07:00** | 早晨簡報 | **Vercel 內建**（免費，實際落在 07:00–07:59） | `/api/cron/remind?kind=morning` |
+| **平日 07:00** | 早晨簡報 | **Vercel 內建**（免費，實際落在 07:00–07:59） | `/api/cron/remind?kind=morning` |
+| **週六日 10:00** | 早晨簡報 | **Supabase pg_cron** | `/api/cron/remind?kind=morning` |
 | 10:00 | 抵達確認 | **Supabase pg_cron**（準點） | `/api/cron/remind?kind=arrive` |
 | 16:00 | 完工確認 | **Supabase pg_cron** | `/api/cron/remind?kind=done` |
 | 20:00 | 明日預覽與待處理 | **Supabase pg_cron** | `/api/cron/remind?kind=evening` |
@@ -27,7 +29,7 @@
 
 安靜規則（沒有內容就不吵人）：
 
-**假日規則**：週末與國定假日只送早晨簡報，10:00、16:00、20:00 一律不送（`?force=1` 可手動強制）。
+**假日規則**：週末與國定假日只送早晨簡報（週六日在 10:00 送），10:00 抵達、16:00 完工一律不送；**例外：禮拜日 20:00 照送週一的明日預覽**（`?force=1` 可手動強制）。
 - 早晨簡報：週末與國定假日，沒有排班也沒有急件、逾期、等太久的事就不送
 - 10:00 抵達確認：今天沒有排班就不送
 - 16:00 完工確認：今天沒有排班、也沒有要決定的機動待辦就不送
@@ -40,7 +42,7 @@
    ```sql
    select vault.create_secret('這裡貼 CRON_SECRET', 'cron_secret');
    ```
-3. 一次建立三個排程：
+3. 一次建立四個排程（第四個是週六日 10:00 的早晨簡報）：
    ```sql
    select cron.schedule('remind-arrive', '0 2 * * *', $$
      select net.http_get(
@@ -52,6 +54,13 @@
    select cron.schedule('remind-done', '0 8 * * *', $$
      select net.http_get(
        url := 'https://kuanlinai.vercel.app/api/cron/remind?kind=done',
+       headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'))
+     );
+   $$);
+
+   select cron.schedule('remind-morning-weekend', '0 2 * * 6,0', $$
+     select net.http_get(
+       url := 'https://kuanlinai.vercel.app/api/cron/remind?kind=morning',
        headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'))
      );
    $$);

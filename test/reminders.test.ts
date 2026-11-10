@@ -106,11 +106,23 @@ describe("假日只送早晨簡報", () => {
     for (const d of ["2026-11-14", "2026-11-15", "2026-10-10"]) {
       expect(restDaySkip("arrive", d)).toBeTruthy();
       expect(restDaySkip("done", d)).toBeTruthy();
-      expect(restDaySkip("evening", d)).toBeTruthy();
+      if (d !== "2026-11-15") expect(restDaySkip("evening", d)).toBeTruthy();
       expect(restDaySkip("morning", d)).toBeNull();
     }
   });
   it("平日全部照常", () => {
     for (const k of ["morning", "arrive", "done", "evening"] as const) expect(restDaySkip(k, "2026-11-12")).toBeNull();
+  });
+});
+
+describe("禮拜日晚上送週一預覽", () => {
+  it("週日 20:00 的明日預覽照送；週六晚上與國定假日晚上不送", () => {
+    expect(restDaySkip("evening", "2026-11-15")).toBeNull(); // 週日
+    expect(restDaySkip("evening", "2026-11-14")).toBeTruthy(); // 週六
+    expect(restDaySkip("evening", "2026-10-10")).toBeTruthy(); // 國慶日
+  });
+  it("週日的抵達與完工確認仍不送", () => {
+    expect(restDaySkip("arrive", "2026-11-15")).toBeTruthy();
+    expect(restDaySkip("done", "2026-11-15")).toBeTruthy();
   });
 });

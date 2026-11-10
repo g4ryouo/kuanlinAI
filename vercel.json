@@ -20,7 +20,7 @@
     },
     {
       "path": "/api/cron/remind?kind=morning",
-      "schedule": "0 23 * * *"
+      "schedule": "0 23 * * 0-4"
     }
   ],
   "rewrites": [
