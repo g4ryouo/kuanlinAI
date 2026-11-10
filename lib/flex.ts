@@ -2,7 +2,8 @@ import type { LineMessage } from "./line.js";
 import { VEHICLE_OPTIONS, headcountWarning, needsWork, timeText } from "./draft.js";
 import { dayInfo } from "./holidays.js";
 import type { Issue } from "./rules.js";
-import type { DraftItem, LeaveNote } from "./types.js";
+import { STATUS_LABEL } from "./followups.js";
+import type { DraftItem, FollowUpDraft, LeaveNote } from "./types.js";
 
 const FIELD_LABEL: Record<string, string> = {
   site: "案場", date: "日期", people: "人員", time_slot: "時段", work: "工作", vehicle: "車輛", headcount: "人數",
@@ -165,4 +166,32 @@ export function parsePostback(data: string): { a: string; d: string; p?: string;
   const d = q.get("d");
   if (!a || !d) return null;
   return { a, d, p: q.get("p") ?? undefined, s: q.get("s") ?? undefined, v: q.get("v") ?? undefined };
+}
+
+/** 聊天室判斷出「要追蹤的事」：確認後才加進「待我回覆」 */
+export function followCard(draftId: string, items: FollowUpDraft[]): LineMessage {
+  const box = (it: FollowUpDraft) => ({
+    type: "box", layout: "vertical", spacing: "sm", margin: "lg",
+    contents: [
+      { type: "text", text: it.title, weight: "bold", size: "md", wrap: true },
+      row("狀態", `${STATUS_LABEL[it.status]}${it.urgent ? "（急）" : ""}`, it.urgent),
+      ...(it.contact ? [row("對方", it.contact)] : []),
+      ...(it.site ? [row("案場", it.site)] : []),
+      ...(it.due_date ? [row("期限", it.due_date)] : []),
+    ],
+  });
+  const btn = (label: string, data: string, primary = false) => ({
+    type: "button", style: primary ? "primary" : "secondary", height: "sm",
+    action: { type: "postback", label, data, displayText: label },
+  });
+  return {
+    type: "flex",
+    altText: `要加入追蹤嗎？${items.map((i) => i.title).join("、")}`,
+    contents: {
+      type: "bubble",
+      header: { type: "box", layout: "vertical", contents: [{ type: "text", text: "要加入追蹤嗎？", weight: "bold", size: "lg" }] },
+      body: { type: "box", layout: "vertical", contents: items.map(box) },
+      footer: { type: "box", layout: "vertical", spacing: "sm", contents: [btn("加入追蹤", `a=fconfirm&d=${draftId}`, true), btn("不用了", `a=fskip&d=${draftId}`)] },
+    },
+  };
 }

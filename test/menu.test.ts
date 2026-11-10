@@ -19,6 +19,12 @@ describe("menuReply", () => {
     expect(menuReply(undefined)).toBeNull();
     expect(menuReply("constructor")).toBeNull();
   });
+  it("teaches the questions and follow-ups the chat now understands", () => {
+    const help = menuReply("怎麼用")!;
+    expect(help).toContain("我有什麼要回覆的");
+    expect(help).toContain("今天有什麼工作");
+    expect(help).toContain("待我回覆");
+  });
   it("does not mention features that do not exist yet", () => {
     const help = menuReply("怎麼用")!;
     for (const bad of ["看這週誰還沒排", "缺幾個人？", "改派到廣明"]) expect(help).not.toContain(bad);

@@ -45,3 +45,8 @@ export function workKind(work: string): "S" | "R" | "V" {
   if (/場勘|會議|報價|勘查/.test(work)) return "V";
   return "S";
 }
+
+/** 什麼都沒抓到的項目（沒案場、沒工作內容、沒日期、沒人）：不值得產生一張確認卡 */
+export function isEmptyItem(it: DraftItem): boolean {
+  return !it.site && needsWork(it) && !it.date && !(it.people?.length) && !(it.person_ids?.length);
+}
