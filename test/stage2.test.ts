@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractTasks } from "../lib/ai.js";
 import { resolveNames, type AliasMap } from "../lib/aliases.js";
 import { MAX_PICK, compactId, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply } from "../lib/flex.js";
+import { headcountWarning, needsWork } from "../lib/draft.js";
 import type { DraftItem } from "../lib/types.js";
 
 const map: AliasMap = new Map([
@@ -124,5 +125,24 @@ describe("multi-select reassign", () => {
     const parsed = parsePostback(m.quickReply.items[0].action.data)!;
     expect(parsed.a).toBe("pick");
     expect(parsed.s!.split(",").map(expandId)).toEqual([uid(1), uid(2)]);
+  });
+});
+
+describe("headcount check and required work", () => {
+  it("warns when assigned count differs from the estimate, stays quiet otherwise", () => {
+    expect(headcountWarning({ ...item, headcount: 2, person_ids: ["a", "b", "c"] })).toBe("原先預估 2 人，但指派了 3 人，請確認是否正確");
+    expect(headcountWarning({ ...item, headcount: 2, person_ids: ["a", "b"] })).toBeNull();
+    expect(headcountWarning({ ...item, headcount: null, person_ids: ["a"] })).toBeNull();
+    expect(headcountWarning({ ...item, headcount: 2, person_ids: [] })).toBeNull();
+  });
+  it("shows the headcount reminder on the card", () => {
+    const card = JSON.stringify(confirmCard("D1", [{ ...item, headcount: 2, person_ids: ["a", "b", "c"] }]));
+    expect(card).toContain("原先預估 2 人，但指派了 3 人");
+  });
+  it("treats empty, 待確認 and uncertain work as missing", () => {
+    expect(needsWork({ ...item, work: "待確認", uncertain: [] })).toBe(true);
+    expect(needsWork({ ...item, work: " ", uncertain: [] })).toBe(true);
+    expect(needsWork({ ...item, work: "弱電施工", uncertain: ["work"] })).toBe(true);
+    expect(needsWork({ ...item, work: "弱電施工", uncertain: [] })).toBe(false);
   });
 });
