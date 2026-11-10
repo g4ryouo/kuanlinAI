@@ -6,6 +6,7 @@ import { isEmptyItem } from "./draft.js";
 import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, VEHICLE_OPTIONS, needsWork, normalizeVehicle, workKind } from "./draft.js";
 import { shortError } from "./errors.js";
 import { menuReply } from "./menu.js";
+import { loadBrief } from "./briefSend.js";
 import { loadFollowupView } from "./followupData.js";
 import { saveFollowup } from "./followupActions.js";
 import { formatFollowups, formatToday } from "./summaries.js";
@@ -106,6 +107,16 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
       await reply(ev, [text(canned)]);
       return;
     }
+  }
+
+  if (msg.type === "text" && /^(今日|早安|今天)簡報$/.test(msg.text?.trim() ?? "")) {
+    try {
+      const { brief } = await loadBrief(taipeiToday().today);
+      await reply(ev, [brief.flex]);
+    } catch (e) {
+      await reply(ev, [text(`產生簡報失敗：${shortError(e)}`)]);
+    }
+    return;
   }
 
   if (msg.type === "text" && msg.text?.trim() === "同步請假") {
