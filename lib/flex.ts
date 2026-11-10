@@ -71,26 +71,53 @@ export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNo
   };
 }
 
+export const MAX_PICK = 6; // postback data 上限 300 字元，6 人以內安全
+
+export const compactId = (id: string) => id.replace(/-/g, "");
+export const expandId = (c: string) => c.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+
+/** 改派：可連續選人，選到的人編在 postback 的 s 欄位裡，不需要後端暫存 */
 export function reassignQuickReply(
   draftId: string,
   people: { id: string; name: string }[],
+  selected: { id: string; name: string }[] = [],
 ): LineMessage {
+  const sel = selected.map((p) => compactId(p.id)).join(",");
+  const picked = new Set(selected.map((p) => p.id));
+  const canAdd = selected.length < MAX_PICK;
+  const items: unknown[] = canAdd
+    ? people
+        .filter((p) => !picked.has(p.id))
+        .slice(0, selected.length ? 12 : 13)
+        .map((p) => ({
+          type: "action",
+          action: {
+            type: "postback",
+            label: p.name.slice(0, 20),
+            data: `a=pick&d=${draftId}&s=${sel}&p=${compactId(p.id)}`,
+            displayText: p.name,
+          },
+        }))
+    : [];
+  if (selected.length) {
+    items.push({
+      type: "action",
+      action: { type: "postback", label: "完成", data: `a=done&d=${draftId}&s=${sel}`, displayText: "完成" },
+    });
+  }
   return {
     type: "text",
-    text: "要改派給誰？",
-    quickReply: {
-      items: people.slice(0, 13).map((p) => ({
-        type: "action",
-        action: { type: "postback", label: p.name.slice(0, 20), data: `a=assign&d=${draftId}&p=${p.id}`, displayText: p.name },
-      })),
-    },
+    text: selected.length
+      ? `已選：${selected.map((p) => p.name).join("、")}。還要加人嗎？選完請按「完成」。`
+      : "要改派給誰？可以連續加人，選完按「完成」。",
+    quickReply: { items },
   };
 }
 
-export function parsePostback(data: string): { a: string; d: string; p?: string } | null {
+export function parsePostback(data: string): { a: string; d: string; p?: string; s?: string } | null {
   const q = new URLSearchParams(data);
   const a = q.get("a");
   const d = q.get("d");
   if (!a || !d) return null;
-  return { a, d, p: q.get("p") ?? undefined };
+  return { a, d, p: q.get("p") ?? undefined, s: q.get("s") ?? undefined };
 }

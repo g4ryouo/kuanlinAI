@@ -2,7 +2,7 @@ import { db } from "./db.js";
 import { env } from "./env.js";
 import { extractTasks } from "./ai.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
-import { confirmCard, leaveText, parsePostback, reassignQuickReply } from "./flex.js";
+import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply } from "./flex.js";
 import { getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
 import type { DraftItem } from "./types.js";
 
@@ -163,24 +163,36 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
     return;
   }
 
-  if (pb.a === "reassign") {
-    const { data: draft } = await db().from("drafts").select("status").eq("id", pb.d).maybeSingle();
-    if (!draft || !["pending", "later"].includes(draft.status)) return void (await done());
-    const { data: people } = await db().from("people").select("id, name").in("role", ["field", "outsourced"]).eq("active", true);
-    await reply(ev, [reassignQuickReply(pb.d, people ?? [])]);
-    return;
-  }
-
-  if (pb.a === "assign" && pb.p) {
+  if (pb.a === "reassign" || pb.a === "pick" || pb.a === "done") {
     const { data: draft } = await db().from("drafts").select("items, status").eq("id", pb.d).maybeSingle();
     if (!draft || !["pending", "later"].includes(draft.status)) return void (await done());
-    const { data: person } = await db().from("people").select("id, name").eq("id", pb.p).maybeSingle();
-    if (!person) return;
+
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const ids = [...new Set([...(pb.s ? pb.s.split(",").map(expandId) : []), ...(pb.a === "pick" && pb.p ? [expandId(pb.p)] : [])])]
+      .filter((x) => UUID.test(x))
+      .slice(0, MAX_PICK);
+
+    const { data: everyone } = await db().from("people").select("id, name").in("role", ["field", "outsourced"]).eq("active", true);
+    const people = everyone ?? [];
+    const selected = ids.map((id) => people.find((p) => p.id === id)).filter((p): p is { id: string; name: string } => !!p);
+
+    if (pb.a !== "done") {
+      await reply(ev, [reassignQuickReply(pb.d, people, selected)]);
+      return;
+    }
+
+    if (!selected.length) {
+      await reply(ev, [text("還沒有選人。請先按「改派人員」選人。")]);
+      return;
+    }
     const items = (draft.items as DraftItem[]).map((it) => ({
-      ...it, person_ids: [person.id], person_names: [person.name], unknown_people: [],
+      ...it,
+      person_ids: selected.map((p) => p.id),
+      person_names: selected.map((p) => p.name),
+      unknown_people: [],
       uncertain: it.uncertain.filter((f) => f !== "people"),
     }));
     await db().from("drafts").update({ items }).eq("id", pb.d);
-    await reply(ev, [text(`已改派給 ${person.name}。`), confirmCard(pb.d, items)]);
+    await reply(ev, [text(`已改派給 ${selected.map((p) => p.name).join("、")}。`), confirmCard(pb.d, items)]);
   }
 }

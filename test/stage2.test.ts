@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractTasks } from "../lib/ai.js";
 import { resolveNames, type AliasMap } from "../lib/aliases.js";
-import { confirmCard, leaveText, parsePostback } from "../lib/flex.js";
+import { MAX_PICK, compactId, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply } from "../lib/flex.js";
 import type { DraftItem } from "../lib/types.js";
 
 const map: AliasMap = new Map([
@@ -86,5 +86,43 @@ describe("extractTasks", () => {
     await expect(extractTasks(input, "k", "m", none)).rejects.toThrow("結構化");
     const bad = (async () => new Response("nope", { status: 500 })) as typeof fetch;
     await expect(extractTasks(input, "k", "m", bad)).rejects.toThrow("500");
+  });
+});
+
+describe("multi-select reassign", () => {
+  const uid = (n: number) => `${String(n).padStart(8, "0")}-aaaa-bbbb-cccc-${String(n).padStart(12, "0")}`;
+  const people = Array.from({ length: 9 }, (_, i) => ({ id: uid(i + 1), name: `人${i + 1}` }));
+  const D = "11111111-2222-3333-4444-555555555555";
+
+  it("round-trips ids", () => expect(expandId(compactId(uid(7)))).toBe(uid(7)));
+
+  it("starts with no done button and lists everyone", () => {
+    const m = reassignQuickReply(D, people) as any;
+    expect(m.quickReply.items).toHaveLength(9);
+    expect(JSON.stringify(m)).not.toContain("a=done");
+  });
+
+  it("after picking, hides picked people, shows the picked names and a done button", () => {
+    const m = reassignQuickReply(D, people, people.slice(0, 2)) as any;
+    expect(m.text).toContain("人1、人2");
+    const labels = m.quickReply.items.map((i: any) => i.action.label);
+    expect(labels).not.toContain("人1");
+    expect(labels).toContain("完成");
+    expect(JSON.stringify(m)).toContain("a=done");
+  });
+
+  it("keeps every postback under LINE's 300 char limit at the max selection and then only offers done", () => {
+    const m = reassignQuickReply(D, people, people.slice(0, MAX_PICK)) as any;
+    for (const i of m.quickReply.items) expect(i.action.data.length).toBeLessThanOrEqual(300);
+    expect(m.quickReply.items).toHaveLength(1);
+    const near = reassignQuickReply(D, people, people.slice(0, MAX_PICK - 1)) as any;
+    for (const i of near.quickReply.items) expect(i.action.data.length).toBeLessThanOrEqual(300);
+  });
+
+  it("parses the selection back out of a pick postback", () => {
+    const m = reassignQuickReply(D, people, people.slice(0, 2)) as any;
+    const parsed = parsePostback(m.quickReply.items[0].action.data)!;
+    expect(parsed.a).toBe("pick");
+    expect(parsed.s!.split(",").map(expandId)).toEqual([uid(1), uid(2)]);
   });
 });
