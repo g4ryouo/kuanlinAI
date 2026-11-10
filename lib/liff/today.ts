@@ -1,6 +1,6 @@
-import { db } from "../../lib/db.js";
-import { authorize } from "../../lib/liffAuth.js";
-import { shapeToday, type AssignmentRow } from "../../lib/today.js";
+import { db } from "../db.js";
+import { authorize } from "../liffAuth.js";
+import { shapeToday, type AssignmentRow } from "../today.js";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 

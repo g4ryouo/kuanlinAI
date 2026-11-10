@@ -1,5 +1,5 @@
-import { authorize } from "../../lib/liffAuth.js";
-import { setArchived } from "../../lib/siteActions.js";
+import { authorize } from "../liffAuth.js";
+import { setArchived } from "../siteActions.js";
 
 export async function POST(request: Request): Promise<Response> {
   const auth = await authorize(request);

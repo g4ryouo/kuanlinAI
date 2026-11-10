@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>待我回覆</title>
+<style>
+:root{--bg:#F3F4F1;--card:#fff;--ink:#1B2420;--sub:#5C6660;--line:#E1E4DF;--blue:#0168BF;--red:#C62828}
+@media (prefers-color-scheme:dark){:root{--bg:#14181A;--card:#1E2427;--ink:#F1F3EF;--sub:#A9B1AB;--line:#2B3336;--red:#F2A0A0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;font-size:15px;line-height:1.45;padding-bottom:env(safe-area-inset-bottom)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 12px 8px;border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+h1{margin:0;font-size:20px}
+a.link{color:var(--blue);font-size:14px;text-decoration:none;padding:10px 4px}
+.btn{min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:15px;cursor:pointer;font-family:inherit}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:700}
+.btn.danger{color:var(--red);border-color:var(--red)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+main{padding:8px 12px 32px;max-width:720px;margin:0 auto}
+h2.sec{font-size:16px;margin:18px 0 8px;display:flex;align-items:center;gap:8px}
+h2.sec .n{font-size:13px;font-weight:600;color:var(--sub);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin:0 0 10px}
+.card h3{margin:0 0 4px;font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 10px;border-radius:99px;background:#E3E5E4;color:#4A514D}
+.chip.urgent{background:var(--red);color:#fff}
+.chip.late{background:#F9D6D6;color:#A02323}
+.chip.wait{background:#FBF0B8;color:#6B5500}
+@media (prefers-color-scheme:dark){.chip{background:#2B3336;color:#C9D0CB}.chip.late{background:#522222;color:#F5B5B5}.chip.wait{background:#4A4115;color:#F2E49B}}
+.row{font-size:14px;color:var(--sub);margin-top:2px}.row b{color:var(--ink);font-weight:600}
+.note{font-size:14px;margin-top:4px;white-space:pre-wrap;word-break:break-word}
+.acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.acts .btn{flex:1;min-width:110px}
+.msg{text-align:center;color:var(--sub);padding:28px 16px}.msg.err{color:var(--red)}
+details.done summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700}
+#shade{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:9}
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--card);border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto;display:none;max-width:560px;margin:0 auto}
+#sheet.open,#shade.open{display:block}
+#sheet h2{margin:0 0 10px;font-size:18px}
+.f{margin:0 0 12px}.f label{display:block;font-size:14px;color:var(--sub);margin-bottom:4px}
+.f input[type=text],.f input[type=date],.f select,.f textarea{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;padding:8px 10px;font-family:inherit}
+.f textarea{min-height:80px;resize:vertical}
+.chk{display:flex;align-items:center;gap:10px;min-height:44px}.chk input{width:22px;height:22px}
+.err{color:var(--red);font-size:14px;min-height:1.4em;margin:0 0 8px}
+.actions{display:flex;gap:8px}.actions .btn{flex:1}.actions.more{margin-top:10px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;max-width:90vw;display:none;z-index:20}
+#toast.show{display:block}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>待我回覆</h1>
+    <a class="link" href="/liff/today">看今日工作 ›</a>
+  </div>
+  <div class="bar" style="margin-top:8px">
+    <button class="btn primary" id="add">新增追蹤事項</button>
+  </div>
+</header>
+<main id="main"><p class="msg">載入中…</p></main>
+<div id="shade"></div>
+<div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+(function () {
+  var SECTIONS = [
+    ['to_reply', '待我回覆', '目前沒有要回覆的事'],
+    ['waiting_other', '等對方回覆', '目前沒有在等對方的事'],
+    ['flexible_hold', '機動待辦', '目前沒有機動待辦']
+  ];
+  var main = document.getElementById('main');
+  var token = null, data = null, lastFocus = null;
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function show(text, err) { main.replaceChildren(el('p', 'msg' + (err ? ' err' : ''), text)); }
+  function md(d) { return Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10)); }
+  function toast(msg) {
+    var t = document.getElementById('toast'); t.textContent = msg; t.className = 'show';
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.className = ''; }, 3500);
+  }
+  function api(method, url, body) {
+    return fetch(url, { method: method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); });
+  }
+  function move(item, to, okMsg, btn) {
+    if (btn) btn.disabled = true;
+    api('POST', '/api/liff/followup-move', { id: item.id, to: to }).then(function (res) {
+      if (res.status === 200) { toast(okMsg); load(); } else { toast(res.body.error || '處理失敗'); load(); }
+    }).catch(function () { toast('連線失敗，請稍後再試'); if (btn) btn.disabled = false; });
+  }
+
+  function card(item) {
+    var c = el('section', 'card');
+    c.appendChild(el('h3', null, item.title));
+    var chips = el('div', 'chips');
+    if (item.urgent) chips.appendChild(el('span', 'chip urgent', '急'));
+    if (item.overdue) chips.appendChild(el('span', 'chip late', '已逾期 ' + (-item.days_to_due) + ' 天'));
+    if (item.status === 'waiting_other') chips.appendChild(el('span', 'chip' + (item.wait_warn ? ' wait' : ''), item.waiting_days === 0 ? '今天開始等' : '已等 ' + item.waiting_days + ' 天'));
+    if (item.site) chips.appendChild(el('span', 'chip', item.site));
+    c.appendChild(chips);
+    if (item.contact) { var r1 = el('div', 'row'); r1.appendChild(document.createTextNode('對方 ')); r1.appendChild(el('b', null, item.contact)); c.appendChild(r1); }
+    if (item.due_date && !item.overdue) {
+      var r2 = el('div', 'row'); r2.appendChild(document.createTextNode('期限 '));
+      r2.appendChild(el('b', null, md(item.due_date) + (item.days_to_due === 0 ? '（今天）' : '（' + item.days_to_due + ' 天後）'))); c.appendChild(r2);
+    }
+    if (item.note) c.appendChild(el('div', 'note', item.note));
+    var acts = el('div', 'acts');
+    function act(label, cls, fn) { var b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.onclick = function () { fn(b); }; acts.appendChild(b); }
+    if (item.status === 'to_reply') {
+      act('已回覆，完成', 'primary', function (b) { move(item, 'done', '已完成', b); });
+      act('等對方回覆', '', function (b) { move(item, 'waiting_other', '改為等對方回覆', b); });
+    } else if (item.status === 'waiting_other') {
+      act('對方已回覆', 'primary', function (b) { move(item, 'to_reply', '改為待我回覆', b); });
+      act('已完成', '', function (b) { move(item, 'done', '已完成', b); });
+    } else if (item.status === 'flexible_hold') {
+      act('已完成', 'primary', function (b) { move(item, 'done', '已完成', b); });
+      act('改成待我回覆', '', function (b) { move(item, 'to_reply', '改為待我回覆', b); });
+    } else if (item.status === 'done') {
+      act('重新開啟', '', function (b) { move(item, 'to_reply', '已重新開啟', b); });
+    }
+    if (item.status !== 'done') act('編輯', '', function (b) { lastFocus = b; openForm(item); });
+    c.appendChild(acts);
+    return c;
+  }
+
+  function render() {
+    var frag = document.createDocumentFragment();
+    SECTIONS.forEach(function (s) {
+      var list = data[s[0]];
+      var h = el('h2', 'sec', s[1]); h.appendChild(el('span', 'n', String(list.length))); frag.appendChild(h);
+      if (!list.length) frag.appendChild(el('p', 'msg', s[2]));
+      list.forEach(function (it) { frag.appendChild(card(it)); });
+    });
+    var d = el('details', 'done');
+    d.appendChild(el('summary', null, '最近完成（14 天內）' + (data.done.length ? '・' + data.done.length : '')));
+    if (!data.done.length) d.appendChild(el('p', 'msg', '還沒有完成的事'));
+    data.done.forEach(function (it) { d.appendChild(card(it)); });
+    frag.appendChild(d);
+    main.replaceChildren(frag);
+  }
+
+  function field(id, label, input) { var w = el('div', 'f'); var l = el('label', null, label); l.htmlFor = id; w.appendChild(l); w.appendChild(input); return w; }
+  function input(id, type, value) { var i = document.createElement('input'); i.type = type; i.id = id; i.value = value || ''; return i; }
+
+  function openForm(item) {
+    var creating = !item;
+    item = item || { title: '', status: 'to_reply', site_id: '', contact: '', note: '', due_date: '', urgent: false };
+    var sheet = document.getElementById('sheet'); sheet.replaceChildren();
+    var h = el('h2', null, creating ? '新增追蹤事項' : '編輯'); h.id = 'sheetTitle'; sheet.appendChild(h);
+
+    var title = input('fTitle', 'text', item.title); title.maxLength = 80; sheet.appendChild(field('fTitle', '這件事是什麼', title));
+    var status = null;
+    if (creating) {
+      status = document.createElement('select'); status.id = 'fStatus';
+      [['to_reply', '待我回覆（對方在等我）'], ['waiting_other', '等對方回覆（我在等對方）'], ['flexible_hold', '機動待辦（我自己要處理，時間不定）']].forEach(function (o) {
+        var op = el('option', null, o[1]); op.value = o[0]; status.appendChild(op);
+      });
+      sheet.appendChild(field('fStatus', '狀態', status));
+    }
+    var contact = input('fContact', 'text', item.contact); contact.maxLength = 40; sheet.appendChild(field('fContact', '對方是誰（客戶、廠商）', contact));
+    var site = document.createElement('select'); site.id = 'fSite';
+    var none = el('option', null, '（沒有）'); none.value = ''; site.appendChild(none);
+    data.sites.forEach(function (s) { var op = el('option', null, s.name); op.value = s.id; if (s.id === item.site_id) op.selected = true; site.appendChild(op); });
+    sheet.appendChild(field('fSite', '相關案場', site));
+    sheet.appendChild(field('fDue', '期限', input('fDue', 'date', item.due_date)));
+    var chk = el('label', 'chk'); var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'fUrgent'; cb.checked = !!item.urgent;
+    chk.appendChild(cb); chk.appendChild(document.createTextNode('急件')); sheet.appendChild(chk);
+    var note = document.createElement('textarea'); note.id = 'fNote'; note.maxLength = 500; note.value = item.note || '';
+    sheet.appendChild(field('fNote', '備註', note));
+
+    var err = el('p', 'err'); err.setAttribute('role', 'alert'); sheet.appendChild(err);
+    var act = el('div', 'actions');
+    var cancel = el('button', 'btn', '取消'); cancel.onclick = function () { closeSheet(); };
+    var save = el('button', 'btn primary', '儲存');
+    save.onclick = function () {
+      err.textContent = ''; save.disabled = true;
+      var body = { id: creating ? undefined : item.id, title: title.value, status: status ? status.value : undefined, contact: contact.value, site_id: site.value, due_date: document.getElementById('fDue').value, urgent: cb.checked, note: note.value };
+      api('POST', '/api/liff/followup-save', body).then(function (res) {
+        if (res.status === 200) { closeSheet(true); toast('已儲存'); load(); } else { err.textContent = res.body.error || '儲存失敗'; save.disabled = false; }
+      }).catch(function () { err.textContent = '連線失敗，請稍後再試'; save.disabled = false; });
+    };
+    act.appendChild(cancel); act.appendChild(save); sheet.appendChild(act);
+    if (!creating) {
+      var more = el('div', 'actions more');
+      var drop = el('button', 'btn danger', '取消這件事');
+      drop.onclick = function () {
+        if (!window.confirm('確定要取消「' + item.title + '」嗎？取消後會從清單消失。')) return;
+        drop.disabled = true;
+        api('POST', '/api/liff/followup-move', { id: item.id, to: 'cancelled' }).then(function (res) {
+          if (res.status === 200) { closeSheet(true); toast('已取消'); load(); } else { err.textContent = res.body.error || '取消失敗'; drop.disabled = false; }
+        }).catch(function () { err.textContent = '連線失敗，請稍後再試'; drop.disabled = false; });
+      };
+      more.appendChild(drop); sheet.appendChild(more);
+    }
+    document.getElementById('shade').className = 'open'; sheet.className = 'open'; title.focus();
+  }
+  function closeSheet(skipFocus) {
+    document.getElementById('sheet').className = ''; document.getElementById('shade').className = '';
+    if (skipFocus !== true && lastFocus) lastFocus.focus();
+  }
+  document.getElementById('shade').onclick = function () { closeSheet(); };
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSheet(); });
+  document.getElementById('add').onclick = function () { lastFocus = document.getElementById('add'); if (data) openForm(null); };
+
+  function load() {
+    if (!data) show('載入中…');
+    api('GET', '/api/liff/followups').then(function (res) {
+      if (res.status !== 200) return show(res.body.error || '讀取失敗', true);
+      data = res.body; render();
+    }).catch(function () { show('連線失敗，請稍後再試', true); });
+  }
+
+  fetch('/api/liff/config').then(function (r) { return r.json(); }).then(function (cfg) {
+    if (!cfg.liffId) return show('尚未設定 LIFF_ID', true);
+    return liff.init({ liffId: cfg.liffId }).then(function () {
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+      token = liff.getIDToken();
+      if (!token) return show('取不到登入資訊，請從 LINE 重新開啟', true);
+      load();
+    });
+  }).catch(function (e) { show('無法啟動：' + (e && e.message ? e.message : '請從 LINE 開啟'), true); });
+})();
+</script>
+</body>
+</html>

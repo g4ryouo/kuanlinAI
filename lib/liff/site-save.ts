@@ -1,6 +1,6 @@
-import { db } from "../../lib/db.js";
-import { authorize } from "../../lib/liffAuth.js";
-import { validateSiteInput } from "../../lib/sites.js";
+import { db } from "../db.js";
+import { authorize } from "../liffAuth.js";
+import { validateSiteInput } from "../sites.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 

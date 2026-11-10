@@ -1,6 +1,6 @@
-import { db } from "../../lib/db.js";
-import { shapeBoard, rangeFor, type BoardAssignment, type BoardPerson } from "../../lib/board.js";
-import { authorize } from "../../lib/liffAuth.js";
+import { db } from "../db.js";
+import { shapeBoard, rangeFor, type BoardAssignment, type BoardPerson } from "../board.js";
+import { authorize } from "../liffAuth.js";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
