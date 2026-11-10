@@ -30,6 +30,9 @@ th.hd{text-align:center;font-size:11px;color:var(--sub);line-height:1.2;padding:
 th.hd b{display:block;font-size:13px;color:var(--ink)}
 th.hd.today{background:var(--today);color:#fff}th.hd.today b{color:#fff}
 th.hd.wk{color:#8A918C}
+th.hd.hol{background:#F9D6D6}th.hd.hol b{color:#A02323}
+@media (prefers-color-scheme:dark){th.hd.hol{background:#522222}th.hd.hol b{color:#F5B5B5}}
+.banner{margin:10px 12px 0;padding:10px 14px;border-radius:12px;background:#FBF0B8;color:#6B5500;font-size:14px}
 th.nm{position:sticky;left:0;z-index:2;background:var(--card);text-align:left;min-width:76px;padding:0 6px 0 2px;font-size:13px}
 th.nm b{display:block;font-weight:700}th.nm small{color:var(--sub);font-size:11px}
 td{padding:0;text-align:center}
@@ -82,6 +85,7 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
   </div>
 </header>
 <div class="legend" id="legend" aria-label="代號說明"></div>
+<div id="banner" class="banner" hidden></div>
 <div class="wrap" id="wrap"><p class="msg">載入中…</p></div>
 
 <div id="shade"></div>
@@ -140,12 +144,16 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
   function render(v) {
     data = v; anchor = v.from;
     document.getElementById('label').textContent = v.label;
+    var bn = document.getElementById('banner');
+    bn.hidden = !v.calendarMissing;
+    if (v.calendarMissing) bn.textContent = '這段期間有年份還沒建立國定假日資料，目前只依週末判斷。';
     var table = el('table');
     table.setAttribute('aria-label', '人力表 ' + v.label);
     var thead = el('thead'), hr = el('tr');
     hr.appendChild(el('th'));
     v.days.forEach(function (d) {
-      var th = el('th', 'hd' + (d.today ? ' today' : '') + (d.weekend ? ' wk' : ''));
+      var th = el('th', 'hd' + (d.today ? ' today' : '') + (d.rest ? ' wk' : '') + (d.holiday ? ' hol' : ''));
+      if (d.holiday) { th.title = d.holiday; th.setAttribute('aria-label', md(d.date) + '（' + d.weekday + '）' + d.holiday); }
       th.scope = 'col';
       th.appendChild(el('b', null, view === 'week' ? md(d.date) : String(Number(d.date.slice(8, 10)))));
       th.appendChild(document.createTextNode(d.weekday));

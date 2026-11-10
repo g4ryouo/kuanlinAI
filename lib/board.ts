@@ -1,3 +1,5 @@
+import { hasCalendar, holidayName, isRestDay } from "./holidays.js";
+
 export type Code = "S" | "R" | "V" | "P" | "L" | "X" | "C" | "N" | "-" | "";
 
 export interface BoardPerson {
@@ -37,6 +39,8 @@ export interface BoardDay {
   date: string;
   weekday: string;
   weekend: boolean;
+  rest: boolean; // 休息日：週末或國定假日（補班日除外）
+  holiday: string | null; // 國定假日名稱
   today: boolean;
 }
 export interface BoardRow {
@@ -50,6 +54,8 @@ export interface BoardView {
   from: string;
   to: string;
   label: string;
+  /** 範圍內有沒有缺少假日資料的年份（只依週末判斷） */
+  calendarMissing: boolean;
   days: BoardDay[];
   rows: BoardRow[];
   summary: { date: string; pending: number; conflicts: number }[];
@@ -93,7 +99,7 @@ export function listDays(from: string, to: string, today: string): BoardDay[] {
     const d = new Date(t);
     const wd = d.getUTCDay();
     const date = toIso(t);
-    out.push({ date, weekday: WD[wd], weekend: wd === 0 || wd === 6, today: date === today });
+    out.push({ date, weekday: WD[wd], weekend: wd === 0 || wd === 6, rest: isRestDay(date), holiday: holidayName(date), today: date === today });
   }
   return out;
 }
@@ -163,7 +169,7 @@ export function shapeBoard(
         return { code: (["S", "R", "V"].includes(k) ? k : "S") as Code, items };
       }
       if (onLeave) return { code: "L", items: [], note: "請假（來自請假表）" };
-      if (d.weekend) return { code: "-", items: [] };
+      if (d.rest) return { code: "-", items: [], note: d.holiday ? `${d.holiday}（國定假日）` : undefined };
       if (d.date < today) return { code: "", items: [] };
       return p.role === "outsourced"
         ? { code: "N", items: [], note: "點工或外包，尚未叫工" }
@@ -178,5 +184,5 @@ export function shapeBoard(
     conflicts: rows.filter((r) => r.cells[i].code === "X").length,
   }));
 
-  return { view, from: range.from, to: range.to, label: range.label, days, rows, summary };
+  return { view, from: range.from, to: range.to, label: range.label, calendarMissing: days.some((d) => !hasCalendar(d.date)), days, rows, summary };
 }
