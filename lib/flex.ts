@@ -79,12 +79,14 @@ export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNo
   };
 }
 
-export function vehicleQuickReply(draftId: string): LineMessage {
+/** CR-V 以冠璋為主：只有冠璋在人員名單時才出現「CR-V」；其他人只會看到「CR-V（特例）」 */
+export function vehicleQuickReply(draftId: string, bossAssigned: boolean): LineMessage {
+  const options = VEHICLE_OPTIONS.filter((o) => (o.code === "c" ? bossAssigned : o.code === "s" ? !bossAssigned : true));
   return {
     type: "text",
-    text: "要用哪一輛車？CR-V 以冠璋為主，其他人使用請選「CR-V（特例）」。",
+    text: bossAssigned ? "要用哪一輛車？" : "要用哪一輛車？CR-V 以冠璋為主，其他人使用請選「CR-V（特例）」。",
     quickReply: {
-      items: VEHICLE_OPTIONS.map((o) => ({
+      items: options.map((o) => ({
         type: "action",
         action: { type: "postback", label: o.label, data: `a=veh&d=${draftId}&v=${o.code}`, displayText: o.label },
       })),

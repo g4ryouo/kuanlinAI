@@ -65,6 +65,16 @@ async function renderCard(draftId: string, items: DraftItem[], leaves: import(".
   return confirmCard(draftId, items, leaves, evaluateItems(items, ctx));
 }
 
+async function bossId(): Promise<string | null> {
+  const { data } = await db().from("people").select("id").eq("name", "陳冠璋").maybeSingle();
+  return data?.id ?? null;
+}
+
+/** 這張卡每一項的人員名單都包含冠璋，才算「冠璋使用」 */
+function bossAssigned(items: DraftItem[], boss: string | null): boolean {
+  return !!boss && items.length > 0 && items.every((it) => it.person_ids?.includes(boss));
+}
+
 function workKind(work: string): "S" | "R" | "V" {
   if (/維修|修|壞|故障/.test(work)) return "R";
   if (/場勘|會議|報價|勘查/.test(work)) return "V";
@@ -307,9 +317,9 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
   }
 
   if (pb.a === "vehicle") {
-    const { data: draft } = await db().from("drafts").select("status").eq("id", pb.d).maybeSingle();
+    const { data: draft } = await db().from("drafts").select("status, items").eq("id", pb.d).maybeSingle();
     if (!draft || !["pending", "later"].includes(draft.status)) return void (await done());
-    await reply(ev, [vehicleQuickReply(pb.d)]);
+    await reply(ev, [vehicleQuickReply(pb.d, bossAssigned(draft.items as DraftItem[], await bossId()))]);
     return;
   }
 
@@ -318,6 +328,11 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
     const { data: draft } = await db().from("drafts").select("items, status, leaves").eq("id", pb.d).maybeSingle();
     if (!draft || !["pending", "later"].includes(draft.status)) return void (await done());
     if (!opt) return;
+    // 舊的快速回覆按鈕可能還留在聊天室：人員已改過、冠璋不在名單時，不接受一般的 CR-V
+    if (opt.code === "c" && !bossAssigned(draft.items as DraftItem[], await bossId())) {
+      await reply(ev, [text("CR-V 以冠璋為主，其他人使用請改選「CR-V（特例）」。"), vehicleQuickReply(pb.d, false)]);
+      return;
+    }
     const items = (draft.items as DraftItem[]).map((it) => ({ ...it, vehicle: opt.name, vehicle_special: opt.special }));
     await db().from("drafts").update({ items }).eq("id", pb.d);
     const ctx = await loadRuleContext(items);

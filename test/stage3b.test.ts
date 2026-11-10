@@ -45,12 +45,15 @@ describe("vehicles", () => {
     const existing = [{ person_id: "x", work_date: "2026-11-11", start_time: null, end_time: null, label: "杜邦 施工", vehicle: "ZINGER" }];
     expect(hasBlock(evaluateItems([item({ vehicle: "ZINGER" })], ctx({ existing })))).toBe(false);
   });
-  it("has a vehicle button and a quick reply with a special CR-V option and a clear option", () => {
+  it("has a vehicle button", () => {
     expect(JSON.stringify(confirmCard("D1", [item()]))).toContain("a=vehicle&d=D1");
-    const q = JSON.stringify(vehicleQuickReply("D1"));
-    for (const o of VEHICLE_OPTIONS) expect(q).toContain(`a=veh&d=D1&v=${o.code}`);
-    expect(q).toContain("CR-V（特例）");
     expect(parsePostback("a=veh&d=D1&v=s")).toMatchObject({ a: "veh", v: "s" });
+  });
+  it("offers plain CR-V only when the boss is assigned; everyone else only gets the special option", () => {
+    const labels = (boss: boolean) => (vehicleQuickReply("D1", boss) as any).quickReply.items.map((i: any) => i.action.label);
+    expect(labels(true)).toEqual(["ZINGER", "WISH", "CR-V", "不指定車輛"]);
+    expect(labels(false)).toEqual(["ZINGER", "WISH", "CR-V（特例）", "不指定車輛"]);
+    for (const o of VEHICLE_OPTIONS) expect(JSON.stringify(vehicleQuickReply("D1", true)) + JSON.stringify(vehicleQuickReply("D1", false))).toContain(`v=${o.code}`);
   });
 });
 
