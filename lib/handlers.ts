@@ -4,6 +4,7 @@ import { extractTasks } from "./ai.js";
 import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, needsWork } from "./draft.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
 import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply } from "./flex.js";
+import { applyAutoRules, blockTexts, evaluateItems, hasBlock, type ExistingAssignment, type PersonInfo, type RuleContext } from "./rules.js";
 import { getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
 import type { DraftItem } from "./types.js";
 
@@ -34,6 +35,33 @@ async function loadAliasMap(): Promise<AliasMap> {
   return map;
 }
 
+async function loadRuleContext(items: DraftItem[], extraLeaves: string[] = []): Promise<RuleContext> {
+  const dates = [...new Set(items.map((i) => i.date).filter((d): d is string => !!d))];
+  const { data: ppl, error } = await db().from("people").select("id, name, active, constraints");
+  if (error) throw error;
+  const people = new Map<string, PersonInfo>((ppl ?? []).map((p: PersonInfo) => [p.id, p]));
+  const leaves = new Set<string>(extraLeaves);
+  const existing: ExistingAssignment[] = [];
+  if (dates.length) {
+    const { data: lv } = await db().from("leaves").select("person_id, leave_date").eq("approved", true).in("leave_date", dates);
+    for (const l of (lv ?? []) as { person_id: string; leave_date: string }[]) leaves.add(`${l.person_id}|${l.leave_date}`);
+    const { data: asg } = await db()
+      .from("assignments")
+      .select("person_id, work_date, start_time, end_time, tasks(title)")
+      .in("work_date", dates);
+    for (const a of (asg ?? []) as unknown as { person_id: string; work_date: string; start_time: string | null; end_time: string | null; tasks: { title: string } | null }[]) {
+      existing.push({ person_id: a.person_id, work_date: a.work_date, start_time: a.start_time, end_time: a.end_time, label: a.tasks?.title ?? "已排工作" });
+    }
+  }
+  const team = [...people.values()].find((p) => p.name === "阿鎮");
+  return { people, leaves, existing, defaultWaterTeamId: team?.id };
+}
+
+async function renderCard(draftId: string, items: DraftItem[], leaves: import("./types.js").LeaveNote[] = []): Promise<LineMessage> {
+  const ctx = await loadRuleContext(items);
+  return confirmCard(draftId, items, leaves, evaluateItems(items, ctx));
+}
+
 function workKind(work: string): "S" | "R" | "V" {
   if (/維修|修|壞|故障/.test(work)) return "R";
   if (/場勘|會議|報價|勘查/.test(work)) return "V";
@@ -62,7 +90,7 @@ async function tryFillWork(ev: LineEvent, userId: string, content: string): Prom
     needsWork(it) ? { ...it, work: content, uncertain: it.uncertain.filter((f) => f !== "work") } : it,
   );
   await db().from("drafts").update({ items, awaiting_work_at: null }).eq("id", data.id);
-  await reply(ev, [text("已填上工作內容。"), confirmCard(data.id, items)]);
+  await reply(ev, [text("已填上工作內容。"), await renderCard(data.id, items)]);
   return true;
 }
 
@@ -117,10 +145,17 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     return;
   }
 
-  const items: DraftItem[] = extraction.items.map((it) => {
+  const resolvedItems: DraftItem[] = extraction.items.map((it) => {
     const { resolved, unknown } = resolveNames(it.people, aliasMap);
     return { ...it, person_ids: resolved.map((p) => p.id), person_names: resolved.map((p) => p.name), unknown_people: unknown };
   });
+  // 訊息裡提到的請假，也當作這次排班的排除條件
+  const msgLeaves = leaves.flatMap((l) => {
+    const p = aliasMap.get(l.person.trim());
+    return p && l.date ? [`${p.id}|${l.date}`] : [];
+  });
+  const ruleCtx = await loadRuleContext(resolvedItems, msgLeaves);
+  const items = applyAutoRules(resolvedItems, ruleCtx);
 
   const { data: draft, error } = await db()
     .from("drafts")
@@ -129,7 +164,7 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     .single();
   if (error || !draft) throw error ?? new Error("draft insert failed");
 
-  const messages: LineMessage[] = [confirmCard(draft.id, items, leaves)];
+  const messages: LineMessage[] = [confirmCard(draft.id, items, leaves, evaluateItems(items, ruleCtx))];
   if (extraction.question) messages.unshift(text(extraction.question));
   await reply(ev, messages);
 }
@@ -151,6 +186,12 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
           `還沒填工作內容，不能確認新增。\n請直接回覆工作內容（例如：弱電施工、監視器維修）${missing > 1 ? "，會套用到所有未填的項目" : ""}。${AWAIT_WORK_MINUTES} 分鐘內回覆有效。`,
         ),
       ]);
+      return;
+    }
+
+    const blocks = blockTexts(evaluateItems(cur.items as DraftItem[], await loadRuleContext(cur.items as DraftItem[])));
+    if (blocks.length) {
+      await reply(ev, [text(`有衝突，不能確認新增：\n${blocks.map((b) => `・${b}`).join("\n")}\n請先按「改派人員」調整。`)]);
       return;
     }
 
@@ -184,6 +225,7 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
       if (it.date && it.person_ids?.length) {
         const rows = it.person_ids.map((pid) => ({
           task_id: task.id, person_id: pid, work_date: it.date, kind: workKind(it.work), fixed: it.fixed,
+          start_time: it.start_time ?? null, end_time: it.end_time ?? null,
         }));
         const { error: aerr } = await db().from("assignments").insert(rows);
         if (aerr) throw aerr;
@@ -230,14 +272,17 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
       await reply(ev, [text("還沒有選人。請先按「改派人員」選人。")]);
       return;
     }
-    const items = (draft.items as DraftItem[]).map((it) => ({
+    const picked = (draft.items as DraftItem[]).map((it) => ({
       ...it,
       person_ids: selected.map((p) => p.id),
       person_names: selected.map((p) => p.name),
       unknown_people: [],
+      auto_note: undefined,
       uncertain: it.uncertain.filter((f) => f !== "people"),
     }));
+    const ctx = await loadRuleContext(picked);
+    const items = applyAutoRules(picked, ctx);
     await db().from("drafts").update({ items }).eq("id", pb.d);
-    await reply(ev, [text(`已改派給 ${selected.map((p) => p.name).join("、")}。`), confirmCard(pb.d, items)]);
+    await reply(ev, [text(`已改派給 ${selected.map((p) => p.name).join("、")}。`), confirmCard(pb.d, items, [], evaluateItems(items, ctx))]);
   }
 }
