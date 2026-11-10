@@ -1,5 +1,5 @@
 import type { LineMessage } from "./line.js";
-import { headcountWarning, needsWork } from "./draft.js";
+import { VEHICLE_OPTIONS, headcountWarning, needsWork, timeText } from "./draft.js";
 import type { Issue } from "./rules.js";
 import type { DraftItem, LeaveNote } from "./types.js";
 
@@ -27,10 +27,10 @@ function itemBox(it: DraftItem, issues: Issue[] = []) {
   const contents: unknown[] = [
     { type: "text", text: it.site ?? "案場待確認", weight: "bold", size: "md", color: it.site ? "#1B2420" : "#A02323", wrap: true },
     row("工作", needsWork(it) ? "內容待確認" : it.work, needsWork(it)),
-    row("時間", [it.date ?? "日期待確認", it.time_slot].filter(Boolean).join(" "), !it.date),
+    row("時間", timeText(it), !it.date),
     row("人員", peopleText, !people.length || (it.unknown_people?.length ?? 0) > 0),
   ];
-  if (it.vehicle) contents.push(row("車輛", it.vehicle));
+  if (it.vehicle) contents.push(row("車輛", `${it.vehicle}${it.vehicle_special ? "（特例，需冠璋同意）" : ""}`));
   if (it.headcount) contents.push(row("人力", `${it.headcount} 人`));
   const hc = headcountWarning(it);
   if (hc) contents.push(row("提醒", hc, true));
@@ -71,9 +71,23 @@ export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNo
         contents: [
           btn("確認新增", `a=confirm&d=${draftId}`, true),
           btn("改派人員", `a=reassign&d=${draftId}`),
+          btn("選擇車輛", `a=vehicle&d=${draftId}`),
           btn("稍後處理", `a=later&d=${draftId}`),
         ],
       },
+    },
+  };
+}
+
+export function vehicleQuickReply(draftId: string): LineMessage {
+  return {
+    type: "text",
+    text: "要用哪一輛車？CR-V 以冠璋為主，其他人使用請選「CR-V（特例）」。",
+    quickReply: {
+      items: VEHICLE_OPTIONS.map((o) => ({
+        type: "action",
+        action: { type: "postback", label: o.label, data: `a=veh&d=${draftId}&v=${o.code}`, displayText: o.label },
+      })),
     },
   };
 }
@@ -121,10 +135,10 @@ export function reassignQuickReply(
   };
 }
 
-export function parsePostback(data: string): { a: string; d: string; p?: string; s?: string } | null {
+export function parsePostback(data: string): { a: string; d: string; p?: string; s?: string; v?: string } | null {
   const q = new URLSearchParams(data);
   const a = q.get("a");
   const d = q.get("d");
   if (!a || !d) return null;
-  return { a, d, p: q.get("p") ?? undefined, s: q.get("s") ?? undefined };
+  return { a, d, p: q.get("p") ?? undefined, s: q.get("s") ?? undefined, v: q.get("v") ?? undefined };
 }

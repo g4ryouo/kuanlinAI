@@ -5,6 +5,7 @@ export interface DraftItem {
   time_slot: string | null;
   people: string[]; // 訊息裡出現的稱呼（原文）
   vehicle: string | null;
+  vehicle_special?: boolean; // CR-V 特例使用（需冠璋同意）
   headcount: number | null;
   priority: "low" | "normal" | "high";
   fixed: boolean;

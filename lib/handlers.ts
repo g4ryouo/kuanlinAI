@@ -1,10 +1,13 @@
 import { db } from "./db.js";
 import { env } from "./env.js";
 import { extractTasks } from "./ai.js";
-import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, needsWork } from "./draft.js";
+import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, VEHICLE_OPTIONS, needsWork, normalizeVehicle } from "./draft.js";
+import { shortError } from "./errors.js";
+import { syncLeaves } from "./syncLeaves.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
-import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply } from "./flex.js";
+import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
 import { applyAutoRules, blockTexts, evaluateItems, hasBlock, type ExistingAssignment, type PersonInfo, type RuleContext } from "./rules.js";
+import type { LeaveNote } from "./types.js";
 import { getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
 import type { DraftItem } from "./types.js";
 
@@ -47,10 +50,10 @@ async function loadRuleContext(items: DraftItem[], extraLeaves: string[] = []): 
     for (const l of (lv ?? []) as { person_id: string; leave_date: string }[]) leaves.add(`${l.person_id}|${l.leave_date}`);
     const { data: asg } = await db()
       .from("assignments")
-      .select("person_id, work_date, start_time, end_time, tasks(title)")
+      .select("person_id, work_date, start_time, end_time, tasks(title), vehicles(name)")
       .in("work_date", dates);
-    for (const a of (asg ?? []) as unknown as { person_id: string; work_date: string; start_time: string | null; end_time: string | null; tasks: { title: string } | null }[]) {
-      existing.push({ person_id: a.person_id, work_date: a.work_date, start_time: a.start_time, end_time: a.end_time, label: a.tasks?.title ?? "已排工作" });
+    for (const a of (asg ?? []) as unknown as { person_id: string; work_date: string; start_time: string | null; end_time: string | null; tasks: { title: string } | null; vehicles: { name: string } | null }[]) {
+      existing.push({ person_id: a.person_id, work_date: a.work_date, start_time: a.start_time, end_time: a.end_time, label: a.tasks?.title ?? "已排工作", vehicle: a.vehicles?.name ?? null });
     }
   }
   const team = [...people.values()].find((p) => p.name === "阿鎮");
@@ -73,7 +76,7 @@ async function tryFillWork(ev: LineEvent, userId: string, content: string): Prom
   const since = new Date(Date.now() - AWAIT_WORK_MINUTES * 60_000).toISOString();
   const { data, error } = await db()
     .from("drafts")
-    .select("id, items")
+    .select("id, items, leaves")
     .eq("line_user_id", userId)
     .in("status", ["pending", "later"])
     .gte("awaiting_work_at", since)
@@ -90,7 +93,7 @@ async function tryFillWork(ev: LineEvent, userId: string, content: string): Prom
     needsWork(it) ? { ...it, work: content, uncertain: it.uncertain.filter((f) => f !== "work") } : it,
   );
   await db().from("drafts").update({ items, awaiting_work_at: null }).eq("id", data.id);
-  await reply(ev, [text("已填上工作內容。"), await renderCard(data.id, items)]);
+  await reply(ev, [text("已填上工作內容。"), await renderCard(data.id, items, (data.leaves ?? []) as LeaveNote[])]);
   return true;
 }
 
@@ -100,6 +103,16 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
   if (!msg || !userId) return;
   if (msg.type !== "text" && msg.type !== "image") {
     await reply(ev, [text("目前先支援文字和圖片，語音之後再開放。")]);
+    return;
+  }
+
+  if (msg.type === "text" && msg.text?.trim() === "同步請假") {
+    try {
+      const r = await syncLeaves();
+      await reply(ev, [text(`同步完成：寫入 ${r.inserted} 天請假，移除 ${r.removed} 天。${r.unknown.length ? `\n表單上對不到的姓名：${r.unknown.join("、")}` : ""}`)]);
+    } catch (e) {
+      await reply(ev, [text(`同步失敗：${shortError(e)}`)]);
+    }
     return;
   }
 
@@ -147,7 +160,7 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
 
   const resolvedItems: DraftItem[] = extraction.items.map((it) => {
     const { resolved, unknown } = resolveNames(it.people, aliasMap);
-    return { ...it, person_ids: resolved.map((p) => p.id), person_names: resolved.map((p) => p.name), unknown_people: unknown };
+    return { ...it, vehicle: normalizeVehicle(it.vehicle), person_ids: resolved.map((p) => p.id), person_names: resolved.map((p) => p.name), unknown_people: unknown };
   });
   // 訊息裡提到的請假，也當作這次排班的排除條件
   const msgLeaves = leaves.flatMap((l) => {
@@ -159,7 +172,7 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
 
   const { data: draft, error } = await db()
     .from("drafts")
-    .insert({ raw_message_id: rawMessageId, line_user_id: userId, items })
+    .insert({ raw_message_id: rawMessageId, line_user_id: userId, items, leaves })
     .select("id")
     .single();
   if (error || !draft) throw error ?? new Error("draft insert failed");
@@ -205,6 +218,8 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
     if (!draft) return void (await done());
 
     const items = draft.items as DraftItem[];
+    const { data: vlist } = await db().from("vehicles").select("id, name");
+    const vehicleId = new Map((vlist ?? []).map((v: { id: string; name: string }) => [v.name, v.id]));
     let assigned = 0;
     for (const it of items) {
       const { data: site } = it.site
@@ -226,15 +241,20 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
         const rows = it.person_ids.map((pid) => ({
           task_id: task.id, person_id: pid, work_date: it.date, kind: workKind(it.work), fixed: it.fixed,
           start_time: it.start_time ?? null, end_time: it.end_time ?? null,
+          vehicle_id: (it.vehicle && vehicleId.get(it.vehicle)) || null,
         }));
         const { error: aerr } = await db().from("assignments").insert(rows);
         if (aerr) throw aerr;
         assigned += rows.length;
       }
     }
-    await db().from("audit_log").insert({ actor: ev.source?.userId ?? "unknown", action: "draft.confirm", entity: "drafts", entity_id: pb.d });
+    const special = items.some((it) => it.vehicle_special);
+    await db().from("audit_log").insert({
+      actor: ev.source?.userId ?? "unknown", action: "draft.confirm", entity: "drafts", entity_id: pb.d,
+      detail: special ? { cr_v_special: true } : null,
+    });
     const pool = items.filter((it) => !it.date || !it.person_ids?.length).length;
-    await reply(ev, [text(`已新增 ${items.length} 項工作，排入 ${assigned} 人次。${pool ? `\n${pool} 項缺日期或人員，先放在待排池。` : ""}`)]);
+    await reply(ev, [text(`已新增 ${items.length} 項工作，排入 ${assigned} 人次。${pool ? `\n${pool} 項缺日期或人員，先放在待排池。` : ""}${special ? "\nCR-V 特例使用，記得向冠璋確認。" : ""}`)]);
     return;
   }
 
@@ -251,7 +271,7 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
   }
 
   if (pb.a === "reassign" || pb.a === "pick" || pb.a === "done") {
-    const { data: draft } = await db().from("drafts").select("items, status").eq("id", pb.d).maybeSingle();
+    const { data: draft } = await db().from("drafts").select("items, status, leaves").eq("id", pb.d).maybeSingle();
     if (!draft || !["pending", "later"].includes(draft.status)) return void (await done());
 
     const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -283,6 +303,27 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
     const ctx = await loadRuleContext(picked);
     const items = applyAutoRules(picked, ctx);
     await db().from("drafts").update({ items }).eq("id", pb.d);
-    await reply(ev, [text(`已改派給 ${selected.map((p) => p.name).join("、")}。`), confirmCard(pb.d, items, [], evaluateItems(items, ctx))]);
+    await reply(ev, [text(`已改派給 ${selected.map((p) => p.name).join("、")}。`), confirmCard(pb.d, items, (draft.leaves ?? []) as LeaveNote[], evaluateItems(items, ctx))]);
+  }
+
+  if (pb.a === "vehicle") {
+    const { data: draft } = await db().from("drafts").select("status").eq("id", pb.d).maybeSingle();
+    if (!draft || !["pending", "later"].includes(draft.status)) return void (await done());
+    await reply(ev, [vehicleQuickReply(pb.d)]);
+    return;
+  }
+
+  if (pb.a === "veh") {
+    const opt = VEHICLE_OPTIONS.find((o) => o.code === pb.v);
+    const { data: draft } = await db().from("drafts").select("items, status, leaves").eq("id", pb.d).maybeSingle();
+    if (!draft || !["pending", "later"].includes(draft.status)) return void (await done());
+    if (!opt) return;
+    const items = (draft.items as DraftItem[]).map((it) => ({ ...it, vehicle: opt.name, vehicle_special: opt.special }));
+    await db().from("drafts").update({ items }).eq("id", pb.d);
+    const ctx = await loadRuleContext(items);
+    await reply(ev, [
+      text(opt.name ? `已選擇車輛：${opt.label}。` : "已改為不指定車輛。"),
+      confirmCard(pb.d, items, (draft.leaves ?? []) as LeaveNote[], evaluateItems(items, ctx)),
+    ]);
   }
 }
