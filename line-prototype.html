@@ -340,7 +340,6 @@ body{margin:0;font-family:'Noto Sans TC',system-ui,sans-serif}
 <div class="card">
 <h2>外包與點工</h2>
 <div class="ext"><div><b>阿鎮團隊</b><div class="sub">4 人，本週已排滿（MOLEX／杜邦拆分待定）</div></div><span class="chip k-x">衝突</span></div>
-<div class="ext"><div><b>阿國團隊</b><div class="sub">最多 8 人，目前{{ guoState }}</div></div><button class="btn sm" onClick="{{ toggleGuo }}">{{ guoText }}</button></div>
 <div class="ext"><div><b>阿澤</b><div class="sub">點工，弱電單人維修可叫</div></div><button class="btn sm" onClick="{{ callZe }}">叫工訊息</button></div>
 </div>
 </sc-if>
@@ -408,7 +407,7 @@ body{margin:0;font-family:'Noto Sans TC',system-ui,sans-serif}
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":884}}'>
 class Component extends DCLogic {
   renderVals() {
-    const DEF = { screen: 'chat', tab: 'matrix', view: 'week', selDay: 12, decision: null, assignee: null, picked: null, conflict: false, showReassign: false, showAdd: false, showHelp: false, dup: false, yuan: null, adopted: {}, fdone: {}, guoOn: false, sheet: null, toast: '' };
+    const DEF = { screen: 'chat', tab: 'matrix', view: 'week', selDay: 12, decision: null, assignee: null, picked: null, conflict: false, showReassign: false, showAdd: false, showHelp: false, dup: false, yuan: null, adopted: {}, fdone: {}, sheet: null, toast: '' };
     const s = Object.assign({}, DEF, this.state || {});
     const set = (o) => this.setState(o);
     const say = (m) => { set({ toast: m }); clearTimeout(this._tt); this._tt = setTimeout(() => set({ toast: '' }), 2000); };
@@ -425,8 +424,7 @@ class Component extends DCLogic {
       { n: '阿杰', sub: '', seg: ['-', 'CCCCC--', 'VRPSS--', 'SPSPS--', 'PSSPS--', 'P'], tx: ['青埔', '維修', '待排', 'MOLEX', '杜邦'] },
       { n: '阿盛', sub: '助手', seg: ['-', 'CCPCC--', 'PPPPS--', 'PSPSP--', 'PPPPP--', 'P'], tx: ['待排', '待排', '待排', '待排', '杜邦助手'] },
       { n: '阿澤', sub: '點工', seg: ['-', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'N'], tx: ['未叫工', '未叫工', '未叫工', '未叫工', '未叫工'] },
-      { n: '阿鎮團隊', sub: '4 人·外包', seg: ['-', 'CCCCC--', 'SSSXS--', 'SSSSS--', 'SSSSS--', 'S'], tx: ['4人·MOLEX', '4人·MOLEX', '4人·杜邦', 'MOLEX＋杜邦 衝突', '4人·杜邦'] },
-      { n: '阿國團隊', sub: '外包', seg: ['-', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'N'], tx: ['未啟用', '未啟用', '未啟用', '未啟用', '未啟用'] }
+      { n: '阿鎮團隊', sub: '4 人·外包', seg: ['-', 'CCCCC--', 'SSSXS--', 'SSSSS--', 'SSSSS--', 'S'], tx: ['4人·MOLEX', '4人·MOLEX', '4人·杜邦', 'MOLEX＋杜邦 衝突', '4人·杜邦'] }
     ];
     const confirmed = s.decision === 'confirm';
     const assignedName = s.assignee || '阿澤';
@@ -590,8 +588,6 @@ class Component extends DCLogic {
       setViewW: () => set({ view: 'week' }), setViewM: () => set({ view: 'month' }),
       isWeek: s.view === 'week', isMonth: s.view === 'month',
       heads, rows, calCells, selLine, pool, avail,
-      toggleGuo: () => set({ guoOn: !s.guoOn }),
-      guoText: s.guoOn ? '取消啟用' : '啟用', guoState: s.guoOn ? '已啟用' : '未啟用',
       callZe: openDraft('ze'),
       hasCellSheet: !!(s.sheet && s.sheet.kind === 'cell'), hasDraftSheet: !!D,
       sheetTitle: s.sheet && s.sheet.kind === 'cell' ? s.sheet.title : '', sheetWho: s.sheet && s.sheet.kind === 'cell' ? s.sheet.who : '',
