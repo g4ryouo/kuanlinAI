@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>今日工作</title>
+<style>
+:root{--bg:#F3F4F1;--card:#fff;--ink:#1B2420;--sub:#5C6660;--line:#E1E4DF;--blue:#0168BF;--orange:#F7820F;--green:#059B3E;--brown:#8E481B}
+@media (prefers-color-scheme:dark){:root{--bg:#14181A;--card:#1E2427;--ink:#F1F3EF;--sub:#A9B1AB;--line:#2B3336}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;font-size:16px;line-height:1.5;padding-bottom:env(safe-area-inset-bottom)}
+header{position:sticky;top:0;z-index:2;background:var(--bg);padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{margin:0;font-size:20px}
+.nav{display:flex;gap:6px}
+.nav button{min-width:44px;min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;font-size:15px;cursor:pointer}
+.nav button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.date{margin:2px 0 0;color:var(--sub);font-size:14px}
+main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:0 0 12px}
+.top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.time{font-weight:700;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 10px;border-radius:99px}
+.k-S{background:#DCE8FB;color:#1E4FA8}.k-R{background:#FCE6C8;color:#8A4B00}.k-V{background:#E7DDF8;color:#55309A}.k-other{background:#E3E5E4;color:#4A514D}
+@media (prefers-color-scheme:dark){.k-S{background:#1C3355;color:#BBD3F7}.k-R{background:#4A3115;color:#F6D1A0}.k-V{background:#34264F;color:#D4C4F2}.k-other{background:#2B3336;color:#C9D0CB}}
+.title{margin:6px 0 8px;font-size:17px;font-weight:700}
+.row{display:flex;gap:8px;color:var(--sub);font-size:14px;margin-top:4px}
+.row b{color:var(--ink);font-weight:600}
+.people{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.p{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 12px;font-size:14px}
+h2{font-size:14px;color:var(--sub);margin:20px 0 8px;font-weight:600}
+.leave{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:10px 14px;color:var(--sub)}
+.msg{text-align:center;color:var(--sub);padding:48px 16px}
+.msg.err{color:#A02323}
+@media (prefers-color-scheme:dark){.msg.err{color:#F2A0A0}}
+.stamp{margin-top:16px;text-align:center;font-size:12px;color:var(--sub)}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>今日工作</h1>
+    <div class="nav">
+      <button id="prev" aria-label="前一天">‹</button>
+      <button id="today" aria-label="回到今天">今天</button>
+      <button id="next" aria-label="後一天">›</button>
+    </div>
+  </div>
+  <p class="date" id="date" aria-live="polite"></p>
+</header>
+<main id="main"><p class="msg">載入中…</p></main>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+(function () {
+  var main = document.getElementById('main');
+  var dateEl = document.getElementById('date');
+  var token = null;
+  var current = null;
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function todayTaipei() {
+    var s = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+    return s;
+  }
+  function shift(date, days) {
+    var d = new Date(date + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function show(text, err) {
+    main.replaceChildren(el('p', 'msg' + (err ? ' err' : ''), text));
+  }
+
+  function render(v) {
+    current = v.date;
+    var isToday = v.date === todayTaipei();
+    dateEl.textContent = v.date.slice(5).replace('-', '/') + '（' + v.weekday + '）' + (isToday ? '・今天' : '');
+    var frag = document.createDocumentFragment();
+
+    if (!v.groups.length) {
+      frag.appendChild(el('p', 'msg', '這天還沒有排定的工作'));
+    }
+    v.groups.forEach(function (g) {
+      var card = el('section', 'card');
+      var top = el('div', 'top');
+      var time = g.start ? (g.end ? g.start + '–' + g.end : g.start + ' 起') : '時間未定';
+      top.appendChild(el('span', 'time', time));
+      var k = ['S', 'R', 'V'].indexOf(g.kind) >= 0 ? g.kind : 'other';
+      top.appendChild(el('span', 'chip k-' + k, g.kind_label));
+      card.appendChild(top);
+      card.appendChild(el('div', 'title', g.title));
+      if (g.vehicle) {
+        var r = el('div', 'row'); r.appendChild(document.createTextNode('車輛')); r.appendChild(el('b', null, g.vehicle));
+        card.appendChild(r);
+      }
+      var ppl = el('div', 'people');
+      g.people.forEach(function (n) { ppl.appendChild(el('span', 'p', n)); });
+      card.appendChild(ppl);
+      frag.appendChild(card);
+    });
+
+    if (v.leaves.length) {
+      frag.appendChild(el('h2', null, '請假'));
+      frag.appendChild(el('div', 'leave', v.leaves.join('、')));
+    }
+    frag.appendChild(el('p', 'stamp', '更新於 ' + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })));
+    main.replaceChildren(frag);
+  }
+
+  function load(date) {
+    show('載入中…');
+    fetch('/api/liff/today?date=' + encodeURIComponent(date), { headers: { Authorization: 'Bearer ' + token } })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+      .then(function (res) {
+        if (res.status !== 200) return show(res.body.error || '讀取失敗', true);
+        render(res.body);
+      })
+      .catch(function () { show('連線失敗，請稍後再試', true); });
+  }
+
+  document.getElementById('prev').onclick = function () { if (token) load(shift(current || todayTaipei(), -1)); };
+  document.getElementById('next').onclick = function () { if (token) load(shift(current || todayTaipei(), 1)); };
+  document.getElementById('today').onclick = function () { if (token) load(todayTaipei()); };
+
+  function start() {
+    fetch('/api/liff/config').then(function (r) { return r.json(); }).then(function (cfg) {
+      if (!cfg.liffId) return show('尚未設定 LIFF_ID', true);
+      return liff.init({ liffId: cfg.liffId }).then(function () {
+        if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+        token = liff.getIDToken();
+        if (!token) return show('取不到登入資訊，請從 LINE 重新開啟', true);
+        load(todayTaipei());
+      });
+    }).catch(function (e) { show('無法啟動：' + (e && e.message ? e.message : '請從 LINE 開啟'), true); });
+  }
+  start();
+})();
+</script>
+</body>
+</html>
