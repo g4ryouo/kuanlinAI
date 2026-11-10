@@ -1,3 +1,4 @@
+import { headcountWarning } from "./draft.js";
 import type { DraftItem } from "./types.js";
 
 export interface PersonInfo {
@@ -12,6 +13,7 @@ export interface ExistingAssignment {
   start_time: string | null;
   end_time: string | null;
   label: string;
+  vehicle?: string | null;
 }
 export interface RuleContext {
   people: Map<string, PersonInfo>;
@@ -78,11 +80,13 @@ export function evaluateItems(items: DraftItem[], ctx: RuleContext): Issue[][] {
     if (it.auto_note) issues.push({ level: "info", text: it.auto_note });
 
     // 單人出勤：除送貨、送料外，施工／維修建議至少 2 人
+    // 若已有「原先預估 N 人，但指派了 M 人」的提醒，就不再重複顯示一般性的「建議至少 2 人」
     if (ids.length === 1 && !DELIVERY.test(it.work)) {
       const p = ctx.people.get(ids[0]);
       const isTeam = Number(p?.constraints.team_size ?? 1) >= 2;
       const soloOk = p?.constraints.solo_low_voltage === true && LOW_VOLTAGE.test(it.work);
-      if (!isTeam && !soloOk) {
+      const noSolo = p?.constraints.no_solo === true;
+      if (!isTeam && !soloOk && (noSolo || !headcountWarning(it))) {
         issues.push({
           level: "warn",
           text:
@@ -99,6 +103,16 @@ export function evaluateItems(items: DraftItem[], ctx: RuleContext): Issue[][] {
         if (ctx.people.get(id)?.constraints.avoid_weekend === true) {
           issues.push({ level: "warn", text: `${nameOf(id)} 假日原則不排` });
         }
+      }
+    }
+
+    // 車輛：CR-V 以冠璋為主，其他人使用要走特例
+    if (it.vehicle === "CR-V") {
+      const boss = [...ctx.people.values()].find((p) => p.name === "陳冠璋");
+      if (it.vehicle_special) {
+        issues.push({ level: "warn", text: "CR-V 特例使用，需冠璋同意" });
+      } else if (boss && !ids.includes(boss.id)) {
+        issues.push({ level: "warn", text: "CR-V 以冠璋為主；其他人使用請改選「CR-V（特例）」" });
       }
     }
 
@@ -125,6 +139,25 @@ export function evaluateItems(items: DraftItem[], ctx: RuleContext): Issue[][] {
           }
         });
       }
+    }
+    // 同一輛車同一時段不可重疊（也要雙方都有明確起訖時間）
+    if (it.vehicle && it.date && s !== null && e !== null && s < e) {
+      const clash: string[] = [];
+      for (const ex of ctx.existing) {
+        const xs = toMin(ex.start_time);
+        const xe = toMin(ex.end_time);
+        if (ex.vehicle === it.vehicle && ex.work_date === it.date && xs !== null && xe !== null && overlap(s, e, xs, xe)) {
+          clash.push(`已排的「${ex.label}」（${hhmm(ex.start_time!)}–${hhmm(ex.end_time!)}）`);
+        }
+      }
+      items.slice(0, idx).forEach((o) => {
+        const os = toMin(o.start_time);
+        const oe = toMin(o.end_time);
+        if (o.vehicle === it.vehicle && o.date === it.date && os !== null && oe !== null && overlap(s, e, os, oe)) {
+          clash.push(`本次另一項「${[o.site, o.work].filter(Boolean).join(" ")}」`);
+        }
+      });
+      for (const c of clash) issues.push({ level: "block", text: `${it.vehicle} ${mmdd(it.date)} ${it.start_time}–${it.end_time} 與${c}時間重疊` });
     }
     return issues;
   });
