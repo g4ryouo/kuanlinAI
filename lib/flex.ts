@@ -1,5 +1,6 @@
 import type { LineMessage } from "./line.js";
 import { headcountWarning, needsWork } from "./draft.js";
+import type { Issue } from "./rules.js";
 import type { DraftItem, LeaveNote } from "./types.js";
 
 const FIELD_LABEL: Record<string, string> = {
@@ -16,7 +17,7 @@ function row(label: string, value: string, warn = false) {
   };
 }
 
-function itemBox(it: DraftItem) {
+function itemBox(it: DraftItem, issues: Issue[] = []) {
   const people = [
     ...(it.person_names ?? []),
     ...(it.unknown_people ?? []).map((n) => `${n}（待確認）`),
@@ -33,6 +34,9 @@ function itemBox(it: DraftItem) {
   if (it.headcount) contents.push(row("人力", `${it.headcount} 人`));
   const hc = headcountWarning(it);
   if (hc) contents.push(row("提醒", hc, true));
+  for (const i of issues) {
+    contents.push(i.level === "info" ? row("說明", i.text) : row(i.level === "block" ? "衝突" : "提醒", i.text, true));
+  }
   if (notes.length) contents.push(row("待確認", notes.join("、"), true));
   return { type: "box", layout: "vertical", spacing: "sm", margin: "lg", contents };
 }
@@ -42,7 +46,7 @@ export function leaveText(leaves: LeaveNote[]): string {
   return `偵測到請假：${parts.join("、")}。請假以請假表為準，這裡不會寫入。`;
 }
 
-export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNote[] = []): LineMessage {
+export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNote[] = [], issues: Issue[][] = []): LineMessage {
   const btn = (label: string, data: string, primary = false) => ({
     type: "button", style: primary ? "primary" : "secondary", height: "sm",
     action: { type: "postback", label, data, displayText: label },
@@ -56,7 +60,7 @@ export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNo
       body: {
         type: "box", layout: "vertical",
         contents: [
-          ...items.map(itemBox),
+          ...items.map((it, i) => itemBox(it, issues[i] ?? [])),
           ...(leaves.length
             ? [{ type: "box", layout: "vertical", margin: "lg", contents: [{ type: "text", text: leaveText(leaves), size: "xs", color: "#5C6660", wrap: true }] }]
             : []),

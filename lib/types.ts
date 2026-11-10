@@ -8,11 +8,15 @@ export interface DraftItem {
   headcount: number | null;
   priority: "low" | "normal" | "high";
   fixed: boolean;
+  start_time?: string | null; // HH:MM，只有訊息明確提到幾點才有
+  end_time?: string | null;
   uncertain: string[]; // 不確定、需冠璋確認的欄位名稱
   // 以下由後端依別名字典填入
   person_ids?: string[];
   person_names?: string[];
   unknown_people?: string[];
+  excluded?: string[]; // 被規則自動排除的人與原因
+  auto_note?: string; // 系統預設的說明（例如水電預設排阿鎮）
 }
 
 export interface LeaveNote {
