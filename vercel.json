@@ -12,5 +12,15 @@
       "path": "/api/cron/sync-leaves",
       "schedule": "0 22 * * *"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/liff",
+      "destination": "/liff/index.html"
+    },
+    {
+      "source": "/liff/:page",
+      "destination": "/liff/:page.html"
+    }
   ]
 }
