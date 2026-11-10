@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { env } from "./env.js";
 import { extractTasks } from "./ai.js";
+import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, needsWork } from "./draft.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
 import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply } from "./flex.js";
 import { getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
@@ -39,6 +40,32 @@ function workKind(work: string): "S" | "R" | "V" {
   return "S";
 }
 
+/** 冠璋剛按了「確認新增」但缺工作內容時，他接著回覆的短文字就是工作內容 */
+async function tryFillWork(ev: LineEvent, userId: string, content: string): Promise<boolean> {
+  const since = new Date(Date.now() - AWAIT_WORK_MINUTES * 60_000).toISOString();
+  const { data, error } = await db()
+    .from("drafts")
+    .select("id, items")
+    .eq("line_user_id", userId)
+    .in("status", ["pending", "later"])
+    .gte("awaiting_work_at", since)
+    .order("awaiting_work_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("awaiting_work lookup failed", error);
+    return false;
+  }
+  if (!data) return false;
+
+  const items = (data.items as DraftItem[]).map((it) =>
+    needsWork(it) ? { ...it, work: content, uncertain: it.uncertain.filter((f) => f !== "work") } : it,
+  );
+  await db().from("drafts").update({ items, awaiting_work_at: null }).eq("id", data.id);
+  await reply(ev, [text("已填上工作內容。"), confirmCard(data.id, items)]);
+  return true;
+}
+
 export async function handleMessage(ev: LineEvent, rawMessageId: string | null): Promise<void> {
   const msg = ev.message;
   const userId = ev.source?.userId;
@@ -46,6 +73,10 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
   if (msg.type !== "text" && msg.type !== "image") {
     await reply(ev, [text("目前先支援文字和圖片，語音之後再開放。")]);
     return;
+  }
+
+  if (msg.type === "text" && msg.text && msg.text.trim().length <= MAX_WORK_TEXT) {
+    if (await tryFillWork(ev, userId, msg.text.trim())) return;
   }
 
   let image: { mediaType: string; base64: string } | undefined;
@@ -109,6 +140,20 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
   const done = () => reply(ev, [text("這張卡已經處理過了。")]);
 
   if (pb.a === "confirm") {
+    const { data: cur } = await db().from("drafts").select("items, status").eq("id", pb.d).maybeSingle();
+    if (!cur || !["pending", "later"].includes(cur.status)) return void (await done());
+
+    const missing = (cur.items as DraftItem[]).filter(needsWork).length;
+    if (missing) {
+      await db().from("drafts").update({ awaiting_work_at: new Date().toISOString() }).eq("id", pb.d);
+      await reply(ev, [
+        text(
+          `還沒填工作內容，不能確認新增。\n請直接回覆工作內容（例如：弱電施工、監視器維修）${missing > 1 ? "，會套用到所有未填的項目" : ""}。${AWAIT_WORK_MINUTES} 分鐘內回覆有效。`,
+        ),
+      ]);
+      return;
+    }
+
     const { data: draft } = await db()
       .from("drafts")
       .update({ status: "confirmed", handled_at: new Date().toISOString() })

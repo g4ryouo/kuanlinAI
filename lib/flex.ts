@@ -1,4 +1,5 @@
 import type { LineMessage } from "./line.js";
+import { headcountWarning, needsWork } from "./draft.js";
 import type { DraftItem, LeaveNote } from "./types.js";
 
 const FIELD_LABEL: Record<string, string> = {
@@ -24,12 +25,14 @@ function itemBox(it: DraftItem) {
   const notes = it.uncertain.map((f) => FIELD_LABEL[f] ?? f);
   const contents: unknown[] = [
     { type: "text", text: it.site ?? "案場待確認", weight: "bold", size: "md", color: it.site ? "#1B2420" : "#A02323", wrap: true },
-    row("工作", it.uncertain.includes("work") ? "內容待確認" : it.work, it.uncertain.includes("work")),
+    row("工作", needsWork(it) ? "內容待確認" : it.work, needsWork(it)),
     row("時間", [it.date ?? "日期待確認", it.time_slot].filter(Boolean).join(" "), !it.date),
     row("人員", peopleText, !people.length || (it.unknown_people?.length ?? 0) > 0),
   ];
   if (it.vehicle) contents.push(row("車輛", it.vehicle));
   if (it.headcount) contents.push(row("人力", `${it.headcount} 人`));
+  const hc = headcountWarning(it);
+  if (hc) contents.push(row("提醒", hc, true));
   if (notes.length) contents.push(row("待確認", notes.join("、"), true));
   return { type: "box", layout: "vertical", spacing: "sm", margin: "lg", contents };
 }
