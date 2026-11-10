@@ -3,6 +3,7 @@ import { env } from "./env.js";
 import { extractTasks } from "./ai.js";
 import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, VEHICLE_OPTIONS, needsWork, normalizeVehicle } from "./draft.js";
 import { shortError } from "./errors.js";
+import { menuReply } from "./menu.js";
 import { syncLeaves } from "./syncLeaves.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
 import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
@@ -114,6 +115,14 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
   if (msg.type !== "text" && msg.type !== "image") {
     await reply(ev, [text("目前先支援文字和圖片，語音之後再開放。")]);
     return;
+  }
+
+  if (msg.type === "text") {
+    const canned = menuReply(msg.text);
+    if (canned) {
+      await reply(ev, [text(canned)]);
+      return;
+    }
   }
 
   if (msg.type === "text" && msg.text?.trim() === "同步請假") {
