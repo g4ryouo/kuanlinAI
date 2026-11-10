@@ -2,6 +2,7 @@ import { allowedUserIds, env } from "../../lib/env.js";
 import { db } from "../../lib/db.js";
 import { replyText, verifySignature, type LineEvent } from "../../lib/line.js";
 import { handleMessage, handlePostback } from "../../lib/handlers.js";
+import { shortError } from "../../lib/errors.js";
 import { waitUntil } from "@vercel/functions";
 
 export async function GET(): Promise<Response> {
@@ -36,7 +37,7 @@ export async function POST(request: Request): Promise<Response> {
         } catch (e) {
           console.error("event failed", ev.webhookEventId, e);
           if (ev.replyToken && ev.source?.userId && allowed.has(ev.source.userId)) {
-            await replyText(ev.replyToken, "處理時發生問題，請稍後再傳一次。", token).catch(() => {});
+            await replyText(ev.replyToken, `處理時發生問題：${shortError(e)}`, token).catch(() => {});
           }
         }
       }
