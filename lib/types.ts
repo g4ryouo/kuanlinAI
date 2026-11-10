@@ -15,7 +15,14 @@ export interface DraftItem {
   unknown_people?: string[];
 }
 
+export interface LeaveNote {
+  person: string; // 訊息中的稱呼
+  date: string | null;
+  person_name?: string; // 對應到的正式姓名
+}
+
 export interface Extraction {
   items: DraftItem[];
+  leaves: LeaveNote[]; // 偵測到的請假，只提示，不寫入
   question: string | null; // 資訊不足時要問冠璋的一句話
 }

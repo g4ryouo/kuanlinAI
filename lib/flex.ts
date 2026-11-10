@@ -1,5 +1,5 @@
 import type { LineMessage } from "./line.js";
-import type { DraftItem } from "./types.js";
+import type { DraftItem, LeaveNote } from "./types.js";
 
 const FIELD_LABEL: Record<string, string> = {
   site: "案場", date: "日期", people: "人員", time_slot: "時段", work: "工作", vehicle: "車輛", headcount: "人數",
@@ -24,7 +24,7 @@ function itemBox(it: DraftItem) {
   const notes = it.uncertain.map((f) => FIELD_LABEL[f] ?? f);
   const contents: unknown[] = [
     { type: "text", text: it.site ?? "案場待確認", weight: "bold", size: "md", color: it.site ? "#1B2420" : "#A02323", wrap: true },
-    row("工作", it.work),
+    row("工作", it.uncertain.includes("work") ? "內容待確認" : it.work, it.uncertain.includes("work")),
     row("時間", [it.date ?? "日期待確認", it.time_slot].filter(Boolean).join(" "), !it.date),
     row("人員", peopleText, !people.length || (it.unknown_people?.length ?? 0) > 0),
   ];
@@ -34,7 +34,12 @@ function itemBox(it: DraftItem) {
   return { type: "box", layout: "vertical", spacing: "sm", margin: "lg", contents };
 }
 
-export function confirmCard(draftId: string, items: DraftItem[]): LineMessage {
+export function leaveText(leaves: LeaveNote[]): string {
+  const parts = leaves.map((l) => `${l.person_name ?? `${l.person}（待確認）`} ${l.date ?? "日期待確認"}`);
+  return `偵測到請假：${parts.join("、")}。請假以請假表為準，這裡不會寫入。`;
+}
+
+export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNote[] = []): LineMessage {
   const btn = (label: string, data: string, primary = false) => ({
     type: "button", style: primary ? "primary" : "secondary", height: "sm",
     action: { type: "postback", label, data, displayText: label },
@@ -45,7 +50,15 @@ export function confirmCard(draftId: string, items: DraftItem[]): LineMessage {
     contents: {
       type: "bubble",
       header: { type: "box", layout: "vertical", contents: [{ type: "text", text: "請確認這些工作", weight: "bold", size: "lg" }] },
-      body: { type: "box", layout: "vertical", contents: items.map(itemBox) },
+      body: {
+        type: "box", layout: "vertical",
+        contents: [
+          ...items.map(itemBox),
+          ...(leaves.length
+            ? [{ type: "box", layout: "vertical", margin: "lg", contents: [{ type: "text", text: leaveText(leaves), size: "xs", color: "#5C6660", wrap: true }] }]
+            : []),
+        ],
+      },
       footer: {
         type: "box", layout: "vertical", spacing: "sm",
         contents: [

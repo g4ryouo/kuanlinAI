@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractTasks } from "../lib/ai.js";
 import { resolveNames, type AliasMap } from "../lib/aliases.js";
-import { confirmCard, parsePostback } from "../lib/flex.js";
+import { confirmCard, leaveText, parsePostback } from "../lib/flex.js";
 import type { DraftItem } from "../lib/types.js";
 
 const map: AliasMap = new Map([
@@ -38,6 +38,21 @@ describe("confirmCard", () => {
   });
 });
 
+describe("work unknown and leave notes", () => {
+  it("shows unknown work as 內容待確認 instead of an invented description", () => {
+    const card = JSON.stringify(confirmCard("D1", [{ ...item, work: "待確認", uncertain: ["work"] }]));
+    expect(card).toContain("內容待確認");
+    expect(card).not.toContain("施工");
+  });
+  it("renders a leave note on the card and as plain text", () => {
+    const leaves = [{ person: "阿東", date: "2026-11-11", person_name: "楊東翰" }];
+    expect(leaveText(leaves)).toContain("楊東翰 2026-11-11");
+    expect(leaveText(leaves)).toContain("不會寫入");
+    expect(JSON.stringify(confirmCard("D1", [item], leaves))).toContain("偵測到請假");
+    expect(leaveText([{ person: "師傅", date: null }])).toContain("師傅（待確認）");
+  });
+});
+
 describe("extractTasks", () => {
   const input = { text: "明天飛哥去晶心", today: "2026-11-10", weekday: "二", aliases: ["飛哥"], sites: ["晶心"] };
 
@@ -45,7 +60,7 @@ describe("extractTasks", () => {
     let body: any;
     const fake = (async (_u: unknown, init: RequestInit) => {
       body = JSON.parse(init.body as string);
-      return new Response(JSON.stringify({ content: [{ type: "tool_use", name: "submit_tasks", input: { items: [item], question: null } }] }), { status: 200 });
+      return new Response(JSON.stringify({ content: [{ type: "tool_use", name: "submit_tasks", input: { items: [item], leaves: [], question: null } }] }), { status: 200 });
     }) as typeof fetch;
     const r = await extractTasks(input, "k", "m", fake);
     expect(r.items[0].site).toBe("晶心");
@@ -59,10 +74,10 @@ describe("extractTasks", () => {
       calls++;
       const content = calls === 1
         ? [{ type: "text", text: "好的" }]
-        : [{ type: "tool_use", name: "submit_tasks", input: { items: [], question: null } }];
+        : [{ type: "tool_use", name: "submit_tasks", input: { items: [], leaves: [], question: null } }];
       return new Response(JSON.stringify({ content }), { status: 200 });
     }) as typeof fetch;
-    expect(await extractTasks(input, "k", "m", fake)).toEqual({ items: [], question: null });
+    expect(await extractTasks(input, "k", "m", fake)).toEqual({ items: [], leaves: [], question: null });
     expect(calls).toBe(2);
   });
 
