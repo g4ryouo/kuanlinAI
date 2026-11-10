@@ -1,5 +1,16 @@
 {
   "functions": {
-    "api/line/webhook.ts": { "maxDuration": 60 }
-  }
+    "api/line/webhook.ts": {
+      "maxDuration": 60
+    },
+    "api/cron/sync-leaves.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/sync-leaves",
+      "schedule": "0 22 * * *"
+    }
+  ]
 }
