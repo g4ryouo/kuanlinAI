@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { env } from "./env.js";
 import { loadFollowupView } from "./followupData.js";
 import { pushMessages } from "./line.js";
-import { addDays, buildArrive, buildDone, buildEvening, type Reminder, type ReminderKind } from "./reminders.js";
+import { addDays, buildArrive, buildDone, buildEvening, restDaySkip, type Reminder, type ReminderKind } from "./reminders.js";
 import { loadTodayView } from "./todayData.js";
 
 /** 還沒決定派誰的工作（待排池）件數 */
@@ -75,6 +75,8 @@ async function claim(kind: ReminderKind, key: string, to: string): Promise<Claim
 
 export async function sendReminder(kind: ReminderKind, opts: { dry?: boolean; force?: boolean; resend?: boolean } = {}): Promise<ReminderResult> {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+  const rest = restDaySkip(kind, today);
+  if (rest && !opts.force) return { kind, date: today, skipped: rest, recipients: [] };
   const r = await buildReminder(kind, today);
 
   if (!opts.force && !r.send) return { kind, date: today, skipped: r.skipReason ?? "沒有內容", recipients: [] };

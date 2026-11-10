@@ -99,3 +99,18 @@ describe("20:00 tomorrow preview", () => {
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
   });
 });
+
+import { restDaySkip } from "../lib/reminders.js";
+describe("假日只送早晨簡報", () => {
+  it("週末與國定假日：抵達／完工／明日預覽都不送，早晨簡報照常", () => {
+    for (const d of ["2026-11-14", "2026-11-15", "2026-10-10"]) {
+      expect(restDaySkip("arrive", d)).toBeTruthy();
+      expect(restDaySkip("done", d)).toBeTruthy();
+      expect(restDaySkip("evening", d)).toBeTruthy();
+      expect(restDaySkip("morning", d)).toBeNull();
+    }
+  });
+  it("平日全部照常", () => {
+    for (const k of ["morning", "arrive", "done", "evening"] as const) expect(restDaySkip(k, "2026-11-12")).toBeNull();
+  });
+});

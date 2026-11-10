@@ -15,6 +15,12 @@ export interface Reminder {
   flex: LineMessage;
 }
 
+/** 週末與國定假日：只送早晨簡報，其餘提醒（抵達、完工、明日預覽）一律不送 */
+export function restDaySkip(kind: ReminderKind, today: string): string | null {
+  if (kind === "morning" || !isRestDay(today)) return null;
+  return `今天是${holidayName(today) ?? "週末"}，假日只送早晨簡報`;
+}
+
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 const MAX = 5;
 
