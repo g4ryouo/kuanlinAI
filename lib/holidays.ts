@@ -63,3 +63,20 @@ export function isRestDay(date: string): boolean {
   if (MAKEUP_WORKDAYS.includes(date)) return false;
   return date in HOLIDAYS || isWeekend(date);
 }
+
+export type DayType = "workday" | "weekend" | "holiday";
+export interface DayInfo {
+  day_type: DayType;
+  /** 休息日出勤算「點工」（影響薪資計算），平日為 regular */
+  pay_mode: "regular" | "daily";
+  holiday: string | null;
+}
+
+/** 這天的類型與計薪方式；寫入排班時一併存起來，之後薪資系統可直接查詢 */
+export function dayInfo(date: string): DayInfo {
+  if (MAKEUP_WORKDAYS.includes(date)) return { day_type: "workday", pay_mode: "regular", holiday: null };
+  const name = holidayName(date);
+  if (name) return { day_type: "holiday", pay_mode: "daily", holiday: name };
+  if (isWeekend(date)) return { day_type: "weekend", pay_mode: "daily", holiday: null };
+  return { day_type: "workday", pay_mode: "regular", holiday: null };
+}

@@ -1,5 +1,5 @@
 import { headcountWarning } from "./draft.js";
-import { holidayName, isRestDay } from "./holidays.js";
+import { isRestDay } from "./holidays.js";
 import type { DraftItem } from "./types.js";
 
 export interface PersonInfo {
@@ -95,11 +95,6 @@ export function evaluateItems(items: DraftItem[], ctx: RuleContext): Issue[][] {
               : `只派了 ${p?.name ?? "1 人"}，施工／維修建議至少 2 人`,
         });
       }
-    }
-
-    // 國定假日排班：提醒確認（一般週末不提醒）
-    if (it.date && holidayName(it.date)) {
-      issues.push({ level: "warn", text: `${mmdd(it.date)} 是國定假日（${holidayName(it.date)}），請確認是否要排班` });
     }
 
     // 假日（週末與國定假日）：阿杰原則不排

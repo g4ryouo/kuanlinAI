@@ -1,5 +1,6 @@
 import type { LineMessage } from "./line.js";
 import { VEHICLE_OPTIONS, headcountWarning, needsWork, timeText } from "./draft.js";
+import { dayInfo } from "./holidays.js";
 import type { Issue } from "./rules.js";
 import type { DraftItem, LeaveNote } from "./types.js";
 
@@ -17,6 +18,26 @@ function row(label: string, value: string, warn = false) {
   };
 }
 
+/** 假日出勤算點工：紅底白字的「點」，之後薪資計算會用到 */
+function dianRow() {
+  return {
+    type: "box", layout: "baseline", spacing: "sm",
+    contents: [
+      { type: "text", text: "計薪", size: "sm", color: "#8a8f8c", flex: 2 },
+      {
+        type: "box", layout: "horizontal", flex: 6,
+        contents: [
+          {
+            type: "box", layout: "vertical", flex: 0, backgroundColor: "#C62828", cornerRadius: "4px", paddingAll: "2px", paddingStart: "8px", paddingEnd: "8px",
+            contents: [{ type: "text", text: "點", color: "#FFFFFF", size: "xs", weight: "bold" }],
+          },
+          { type: "text", text: "假日出勤（點工）", size: "sm", color: "#5C6660", margin: "sm", flex: 1 },
+        ],
+      },
+    ],
+  };
+}
+
 function itemBox(it: DraftItem, issues: Issue[] = []) {
   const people = [
     ...(it.person_names ?? []),
@@ -28,6 +49,7 @@ function itemBox(it: DraftItem, issues: Issue[] = []) {
     { type: "text", text: it.site ?? "案場待確認", weight: "bold", size: "md", color: it.site ? "#1B2420" : "#A02323", wrap: true },
     row("工作", needsWork(it) ? "內容待確認" : it.work, needsWork(it)),
     row("時間", timeText(it), !it.date),
+    ...(it.date && dayInfo(it.date).pay_mode === "daily" ? [dianRow()] : []),
     row("人員", peopleText, !people.length || (it.unknown_people?.length ?? 0) > 0),
   ];
   if (it.vehicle) contents.push(row("車輛", `${it.vehicle}${it.vehicle_special ? "（特例，需冠璋同意）" : ""}`));

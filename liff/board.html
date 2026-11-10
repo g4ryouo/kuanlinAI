@@ -30,14 +30,16 @@ th.hd{text-align:center;font-size:11px;color:var(--sub);line-height:1.2;padding:
 th.hd b{display:block;font-size:13px;color:var(--ink)}
 th.hd.today{background:var(--today);color:#fff}th.hd.today b{color:#fff}
 th.hd.wk{color:#8A918C}
-th.hd.hol{background:#F9D6D6}th.hd.hol b{color:#A02323}
-@media (prefers-color-scheme:dark){th.hd.hol{background:#522222}th.hd.hol b{color:#F5B5B5}}
 .banner{margin:10px 12px 0;padding:10px 14px;border-radius:12px;background:#FBF0B8;color:#6B5500;font-size:14px}
 th.nm{position:sticky;left:0;z-index:2;background:var(--card);text-align:left;min-width:76px;padding:0 6px 0 2px;font-size:13px}
 th.nm b{display:block;font-weight:700}th.nm small{color:var(--sub);font-size:11px}
 td{padding:0;text-align:center}
 .cell{display:block;width:100%;min-width:36px;height:40px;border:0;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+.cell{position:relative}
 .cell sup{font-size:9px;margin-left:1px}
+.dian{display:inline-block;background:#C62828;color:#fff;font-weight:700;border-radius:4px;line-height:1.3}
+.cell .dian{position:absolute;top:1px;right:1px;font-size:10px;padding:0 3px}
+.chip.dian{font-size:12px;padding:1px 8px}
 .blank{height:40px;border-radius:6px}
 td.today .cell,td.today .blank{box-shadow:0 0 0 2px var(--today)}
 .k-S{background:#DCE8FB;color:#1E4FA8}.k-R{background:#FCE6C8;color:#8A4B00}.k-V{background:#E7DDF8;color:#55309A}
@@ -63,6 +65,30 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
 .item .d{color:var(--sub);font-size:14px}
 .note{color:var(--sub);font-size:14px;margin:8px 0 0}
 #close{margin-top:12px;width:100%;min-height:44px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:12px;font-size:15px;cursor:pointer}
+.tabs{display:flex;gap:6px;margin-top:8px}
+.tabs button{flex:1;min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;font-size:15px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);font-weight:700}
+.panel{padding:12px 12px 32px;max-width:720px;margin:0 auto}
+.hint{color:var(--sub);font-size:13px;margin:0 0 10px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:0 0 12px}
+.pcard h3{margin:0 0 6px;font-size:17px}
+.prow{display:flex;gap:8px;font-size:14px;color:var(--sub);margin-top:4px;flex-wrap:wrap}
+.prow b{color:var(--ink);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pp{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 12px;font-size:14px}
+.pp.out{border-style:dashed;color:var(--sub)}
+.warn{color:#A02323;font-size:14px;margin-top:6px}
+@media (prefers-color-scheme:dark){.warn{color:#F2A0A0}}
+.btnrow{display:flex;gap:8px;margin-top:12px}
+.btn{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:15px;cursor:pointer;font-family:inherit}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:700}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.sh{color:#A02323;font-weight:700}
+@media (prefers-color-scheme:dark){.sh{color:#F2A0A0}}
+.urgent{background:#F9D6D6;color:#A02323;margin-left:6px}
+@media (prefers-color-scheme:dark){.urgent{background:#522222;color:#F5B5B5}}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;max-width:90vw;display:none;z-index:20}
+#toast.show{display:block}
 </style>
 </head>
 <body>
@@ -71,7 +97,12 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
     <h1>人力排班</h1>
     <a class="link" href="/liff/today">看今日工作 ›</a>
   </div>
-  <div class="ctl">
+  <div class="tabs" role="tablist" aria-label="人力排班分頁">
+    <button role="tab" id="tabBoard" aria-selected="true">人力表</button>
+    <button role="tab" id="tabPool" aria-selected="false">待排池</button>
+    <button role="tab" id="tabAvail" aria-selected="false">可用人力</button>
+  </div>
+  <div class="ctl" id="boardCtl">
     <div class="seg" role="group" aria-label="檢視範圍">
       <button id="vweek" aria-pressed="true">本週</button>
       <button id="vmonth" aria-pressed="false">整月</button>
@@ -87,6 +118,9 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
 <div class="legend" id="legend" aria-label="代號說明"></div>
 <div id="banner" class="banner" hidden></div>
 <div class="wrap" id="wrap"><p class="msg">載入中…</p></div>
+<div class="panel" id="poolPanel" role="tabpanel" aria-labelledby="tabPool" hidden></div>
+<div class="panel" id="availPanel" role="tabpanel" aria-labelledby="tabAvail" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div id="shade"></div>
 <div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div>
@@ -95,6 +129,8 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
 <script>
 (function () {
   var LABEL = { S: '施工', R: '維修', V: '場勘／會議', P: '待排', L: '請假', X: '衝突', C: '已完成', N: '未叫工' };
+  // 畫面上顯示的符號（資料與 API 仍用 S/R/V… 代號）；待排故意留空，只留黃底
+  var SYMBOL = { S: '工', R: '修', V: '勘', P: '', L: '假', X: '❌', C: '✅', N: '未' };
   var wrap = document.getElementById('wrap');
   var token = null, view = window.innerWidth < 700 ? 'week' : 'month', anchor = null, data = null, lastFocus = null;
 
@@ -105,7 +141,134 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
 
   // legend
   var lg = document.getElementById('legend');
-  Object.keys(LABEL).forEach(function (k) { lg.appendChild(el('span', 'chip k-' + k, k + ' ' + LABEL[k])); });
+  Object.keys(LABEL).forEach(function (k) { lg.appendChild(el('span', 'chip k-' + k, k === 'P' ? '待排（黃底空白）' : SYMBOL[k] + ' ' + LABEL[k])); });
+  lg.appendChild(el('span', 'chip dian', '點 假日出勤（點工）'));
+
+  var tab = 'board', poolData = null;
+  function toast(msg) {
+    var t = document.getElementById('toast'); t.textContent = msg; t.className = 'show';
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.className = ''; }, 3500);
+  }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); });
+  }
+  function showTab(name) {
+    tab = name;
+    ['Board', 'Pool', 'Avail'].forEach(function (n) {
+      document.getElementById('tab' + n).setAttribute('aria-selected', String(name === n.toLowerCase()));
+    });
+    var isBoard = name === 'board';
+    document.getElementById('boardCtl').hidden = !isBoard;
+    document.getElementById('legend').hidden = !isBoard;
+    document.getElementById('banner').hidden = true;
+    document.getElementById('wrap').hidden = !isBoard;
+    document.getElementById('poolPanel').hidden = name !== 'pool';
+    document.getElementById('availPanel').hidden = name !== 'avail';
+    if (!token) return;
+    if (isBoard) load('');
+    else loadPool();
+  }
+  function hh(t) { return t ? t.slice(0, 5) : null; }
+
+  function renderPool(d) {
+    var panel = document.getElementById('poolPanel');
+    var frag = document.createDocumentFragment();
+    frag.appendChild(el('p', 'hint', '已確認但還沒排人的工作。系統依規則建議人選，按「排入建議人選」才會寫入排班。'));
+    if (!d.pool.length) frag.appendChild(el('p', 'msg', '目前沒有待排的工作'));
+    d.pool.forEach(function (t) {
+      var c = el('section', 'pcard');
+      var h = el('h3', null, t.title);
+      if (t.priority === 'high') h.appendChild(el('span', 'chip urgent', '急'));
+      c.appendChild(h);
+      var r1 = el('div', 'prow');
+      r1.appendChild(document.createTextNode('日期要求'));
+      r1.appendChild(el('b', null, t.wanted_date ? md(t.wanted_date) + '（' + t.weekday + '）' : '未定'));
+      if (t.start_time) r1.appendChild(el('b', null, hh(t.start_time) + (t.end_time ? '–' + hh(t.end_time) : ' 起')));
+      r1.appendChild(document.createTextNode('人力')); r1.appendChild(el('b', null, (t.headcount || 2) + ' 人'));
+      if (t.suggestion.daily) r1.appendChild(el('span', 'chip dian', '點 假日出勤'));
+      c.appendChild(r1);
+      var s = t.suggestion;
+      var r2 = el('div', 'prow'); r2.appendChild(document.createTextNode('建議人選')); c.appendChild(r2);
+      if (s.names.length) {
+        var chips = el('div', 'chips');
+        s.names.forEach(function (n) { chips.appendChild(el('span', 'pp', n)); });
+        c.appendChild(chips);
+        c.appendChild(el('div', 'prow', s.reason));
+      } else {
+        c.appendChild(el('div', 'warn', s.reason));
+      }
+      s.warnings.forEach(function (w) { c.appendChild(el('div', 'warn', w)); });
+      var row = el('div', 'btnrow');
+      var go = el('button', 'btn primary', '排入建議人選');
+      go.disabled = !s.names.length;
+      go.onclick = function () {
+        if (!window.confirm('確定把「' + t.title + '」排給 ' + s.names.join('、') + '？')) return;
+        go.disabled = true;
+        post('/api/liff/pool-assign', { task_id: t.id }).then(function (res) {
+          if (res.status === 200) { toast('已排入：' + res.body.names.join('、')); poolData = null; loadPool(); }
+          else { toast(res.body.error || '排入失敗'); go.disabled = false; loadPool(); }
+        }).catch(function () { toast('連線失敗，請稍後再試'); go.disabled = false; });
+      };
+      var cancel = el('button', 'btn', '取消');
+      cancel.onclick = function () {
+        if (!window.confirm('確定要取消「' + t.title + '」嗎？取消後會從待排池移除。')) return;
+        cancel.disabled = true;
+        post('/api/liff/pool-cancel', { task_id: t.id }).then(function (res) {
+          if (res.status === 200) { toast('已取消'); loadPool(); }
+          else { toast(res.body.error || '取消失敗'); cancel.disabled = false; loadPool(); }
+        }).catch(function () { toast('連線失敗，請稍後再試'); cancel.disabled = false; });
+      };
+      row.appendChild(go); row.appendChild(cancel); c.appendChild(row);
+      frag.appendChild(c);
+    });
+    panel.replaceChildren(frag);
+  }
+
+  function renderAvail(d) {
+    var panel = document.getElementById('availPanel');
+    var frag = document.createDocumentFragment();
+    frag.appendChild(el('p', 'hint', '今天起兩週：誰還沒排，以及待排工作造成的人力缺口。假日只在有待排需求時才列出，出勤會標註為「點」（點工）。'));
+    if (d.calendarMissing) frag.appendChild(el('p', 'warn', '這段期間有年份還沒建立國定假日資料，目前只依週末判斷。'));
+    d.available.forEach(function (day) {
+      var c = el('section', 'pcard');
+      var hd = el('h3', null, md(day.date) + '（' + day.weekday + '）' + (day.date === d.today ? '・今天' : ''));
+      if (day.rest) hd.appendChild(el('span', 'chip dian', '點'));
+      c.appendChild(hd);
+      var r = el('div', 'prow'); r.appendChild(document.createTextNode('有空')); c.appendChild(r);
+      if (day.free.length) {
+        var ch = el('div', 'chips'); day.free.forEach(function (n) { ch.appendChild(el('span', 'pp', n)); }); c.appendChild(ch);
+      } else c.appendChild(el('div', 'prow', '沒有人有空'));
+      if (day.outsourced.length) {
+        var r2 = el('div', 'prow'); r2.appendChild(document.createTextNode('外包（未叫工）')); c.appendChild(r2);
+        var ch2 = el('div', 'chips'); day.outsourced.forEach(function (n) { ch2.appendChild(el('span', 'pp out', n)); }); c.appendChild(ch2);
+      }
+      if (day.demand > 0) {
+        var r3 = el('div', 'prow'); r3.appendChild(document.createTextNode('待排需求')); r3.appendChild(el('b', null, day.demand + ' 人'));
+        if (day.shortage > 0) r3.appendChild(el('span', 'sh', '缺 ' + day.shortage + ' 人'));
+        c.appendChild(r3);
+      }
+      frag.appendChild(c);
+    });
+    if (!d.available.length) frag.appendChild(el('p', 'msg', '這兩週都是休息日'));
+    panel.replaceChildren(frag);
+  }
+
+  function loadPool() {
+    var target = document.getElementById(tab === 'pool' ? 'poolPanel' : 'availPanel');
+    if (!poolData) target.replaceChildren(el('p', 'msg', '載入中…'));
+    fetch('/api/liff/pool', { headers: { Authorization: 'Bearer ' + token } })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+      .then(function (res) {
+        if (res.status !== 200) return target.replaceChildren(el('p', 'msg err', res.body.error || '讀取失敗'));
+        poolData = res.body;
+        if (tab === 'pool') renderPool(poolData); else if (tab === 'avail') renderAvail(poolData);
+      })
+      .catch(function () { target.replaceChildren(el('p', 'msg err', '連線失敗，請稍後再試')); });
+  }
+  document.getElementById('tabBoard').onclick = function () { showTab('board'); };
+  document.getElementById('tabPool').onclick = function () { showTab('pool'); };
+  document.getElementById('tabAvail').onclick = function () { showTab('avail'); };
 
   function setView(v) {
     view = v;
@@ -117,13 +280,14 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
     var s = document.getElementById('sheet');
     s.replaceChildren();
     s.appendChild(el('h2', null, row.name + '・' + md(day.date) + '（' + day.weekday + '）')).id = 'sheetTitle';
-    var chip = el('span', 'chip k-' + cell.code, cell.code + ' ' + (LABEL[cell.code] || ''));
+    var chip = el('span', 'chip k-' + cell.code, (SYMBOL[cell.code] ? SYMBOL[cell.code] + ' ' : '') + (LABEL[cell.code] || ''));
     s.appendChild(chip);
     cell.items.forEach(function (it) {
       var box = el('div', 'item');
       var time = it.start ? (it.end ? it.start + '–' + it.end : it.start + ' 起') : '時間未定';
       box.appendChild(el('div', 't', it.title));
       box.appendChild(el('div', 'd', time + (it.vehicle ? '・' + it.vehicle : '')));
+      if (it.daily) box.appendChild(el('span', 'chip dian', '點 假日出勤（點工）'));
       s.appendChild(box);
     });
     if (cell.note) s.appendChild(el('p', 'note', cell.note));
@@ -152,7 +316,7 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
     var thead = el('thead'), hr = el('tr');
     hr.appendChild(el('th'));
     v.days.forEach(function (d) {
-      var th = el('th', 'hd' + (d.today ? ' today' : '') + (d.rest ? ' wk' : '') + (d.holiday ? ' hol' : ''));
+      var th = el('th', 'hd' + (d.today ? ' today' : '') + (d.rest ? ' wk' : ''));
       if (d.holiday) { th.title = d.holiday; th.setAttribute('aria-label', md(d.date) + '（' + d.weekday + '）' + d.holiday); }
       th.scope = 'col';
       th.appendChild(el('b', null, view === 'week' ? md(d.date) : String(Number(d.date.slice(8, 10)))));
@@ -175,9 +339,10 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
           td.appendChild(el('div', 'blank'));
         } else {
           var b = el('button', 'cell k-' + cell.code);
-          b.textContent = cell.code;
+          b.textContent = SYMBOL[cell.code] || '';
           if (cell.items.length > 1) b.appendChild(el('sup', null, '+' + (cell.items.length - 1)));
-          b.setAttribute('aria-label', row.name + ' ' + md(day.date) + '（' + day.weekday + '）' + (LABEL[cell.code] || ''));
+          if (cell.daily) b.appendChild(el('span', 'dian', '點'));
+          b.setAttribute('aria-label', row.name + ' ' + md(day.date) + '（' + day.weekday + '）' + (LABEL[cell.code] || '') + (cell.daily ? '，點工' : ''));
           b.onclick = function () { lastFocus = b; openSheet(row, day, cell); };
           td.appendChild(b);
         }
@@ -228,7 +393,7 @@ td.sm.warn{background:#F9D6D6;color:#A02323;font-weight:700;border-radius:6px}
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
       token = liff.getIDToken();
       if (!token) return show('取不到登入資訊，請從 LINE 重新開啟', true);
-      load('');
+      showTab(location.hash === '#pool' ? 'pool' : location.hash === '#avail' ? 'avail' : 'board');
     });
   }).catch(function (e) { show('無法啟動：' + (e && e.message ? e.message : '請從 LINE 開啟'), true); });
 })();

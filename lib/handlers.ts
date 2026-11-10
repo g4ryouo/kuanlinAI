@@ -1,13 +1,15 @@
 import { db } from "./db.js";
 import { env } from "./env.js";
 import { extractTasks } from "./ai.js";
-import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, VEHICLE_OPTIONS, needsWork, normalizeVehicle } from "./draft.js";
+import { dayInfo } from "./holidays.js";
+import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, VEHICLE_OPTIONS, needsWork, normalizeVehicle, workKind } from "./draft.js";
 import { shortError } from "./errors.js";
 import { menuReply } from "./menu.js";
 import { syncLeaves } from "./syncLeaves.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
 import { MAX_PICK, confirmCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
-import { applyAutoRules, blockTexts, evaluateItems, hasBlock, type ExistingAssignment, type PersonInfo, type RuleContext } from "./rules.js";
+import { applyAutoRules, blockTexts, evaluateItems } from "./rules.js";
+import { loadRuleContext } from "./ruleContext.js";
 import type { LeaveNote } from "./types.js";
 import { transcribe, transcribePrompt } from "./transcribe.js";
 import { getAudioContent, getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
@@ -42,28 +44,6 @@ async function loadAliasMap(): Promise<AliasMap> {
   return map;
 }
 
-async function loadRuleContext(items: DraftItem[], extraLeaves: string[] = []): Promise<RuleContext> {
-  const dates = [...new Set(items.map((i) => i.date).filter((d): d is string => !!d))];
-  const { data: ppl, error } = await db().from("people").select("id, name, active, constraints");
-  if (error) throw error;
-  const people = new Map<string, PersonInfo>((ppl ?? []).map((p: PersonInfo) => [p.id, p]));
-  const leaves = new Set<string>(extraLeaves);
-  const existing: ExistingAssignment[] = [];
-  if (dates.length) {
-    const { data: lv } = await db().from("leaves").select("person_id, leave_date").eq("approved", true).in("leave_date", dates);
-    for (const l of (lv ?? []) as { person_id: string; leave_date: string }[]) leaves.add(`${l.person_id}|${l.leave_date}`);
-    const { data: asg } = await db()
-      .from("assignments")
-      .select("person_id, work_date, start_time, end_time, tasks(title), vehicles(name)")
-      .in("work_date", dates);
-    for (const a of (asg ?? []) as unknown as { person_id: string; work_date: string; start_time: string | null; end_time: string | null; tasks: { title: string } | null; vehicles: { name: string } | null }[]) {
-      existing.push({ person_id: a.person_id, work_date: a.work_date, start_time: a.start_time, end_time: a.end_time, label: a.tasks?.title ?? "已排工作", vehicle: a.vehicles?.name ?? null });
-    }
-  }
-  const team = [...people.values()].find((p) => p.name === "阿鎮");
-  return { people, leaves, existing, defaultWaterTeamId: team?.id };
-}
-
 async function renderCard(draftId: string, items: DraftItem[], leaves: import("./types.js").LeaveNote[] = []): Promise<LineMessage> {
   const ctx = await loadRuleContext(items);
   return confirmCard(draftId, items, leaves, evaluateItems(items, ctx));
@@ -79,11 +59,6 @@ function bossAssigned(items: DraftItem[], boss: string | null): boolean {
   return !!boss && items.length > 0 && items.every((it) => it.person_ids?.includes(boss));
 }
 
-function workKind(work: string): "S" | "R" | "V" {
-  if (/維修|修|壞|故障/.test(work)) return "R";
-  if (/場勘|會議|報價|勘查/.test(work)) return "V";
-  return "S";
-}
 
 /** 冠璋剛按了「確認新增」但缺工作內容時，他接著回覆的短文字就是工作內容 */
 async function tryFillWork(ev: LineEvent, userId: string, content: string): Promise<boolean> {
@@ -290,6 +265,11 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
           site_id: site?.id ?? null,
           status: "to_handle",
           priority: it.priority,
+          work: it.work,
+          wanted_date: it.date,
+          headcount: it.headcount,
+          start_time: it.start_time ?? null,
+          end_time: it.end_time ?? null,
         })
         .select("id")
         .single();
@@ -300,6 +280,8 @@ export async function handlePostback(ev: LineEvent): Promise<void> {
           task_id: task.id, person_id: pid, work_date: it.date, kind: workKind(it.work), fixed: it.fixed,
           start_time: it.start_time ?? null, end_time: it.end_time ?? null,
           vehicle_id: (it.vehicle && vehicleId.get(it.vehicle)) || null,
+          day_type: dayInfo(it.date!).day_type,
+          pay_mode: dayInfo(it.date!).pay_mode,
         }));
         const { error: aerr } = await db().from("assignments").insert(rows);
         if (aerr) throw aerr;

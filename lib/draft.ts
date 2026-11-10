@@ -39,3 +39,9 @@ export function timeText(it: DraftItem): string {
   if (it.start_time) return `${date} ${it.start_time} 起`;
   return [date, it.time_slot].filter(Boolean).join(" ");
 }
+
+export function workKind(work: string): "S" | "R" | "V" {
+  if (/維修|修|壞|故障/.test(work)) return "R";
+  if (/場勘|會議|報價|勘查/.test(work)) return "V";
+  return "S";
+}

@@ -15,7 +15,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const { data: rows, error } = await db()
       .from("assignments")
-      .select("task_id, work_date, start_time, end_time, kind, people(name), vehicles(name), tasks(title, sites(name))")
+      .select("task_id, work_date, start_time, end_time, kind, pay_mode, people(name), vehicles(name), tasks(title, sites(name))")
       .eq("work_date", date);
     if (error) throw error;
     const { data: lv, error: e2 } = await db().from("leaves").select("people(name)").eq("leave_date", date).eq("approved", true);

@@ -18,6 +18,7 @@ export interface BoardAssignment {
   start_time: string | null;
   end_time: string | null;
   kind: string;
+  pay_mode?: string | null;
   vehicles: { name: string } | null;
   tasks: { title: string; sites: { name: string } | null } | null;
 }
@@ -29,11 +30,14 @@ export interface CellItem {
   end: string | null;
   vehicle: string | null;
   kind: string;
+  daily: boolean; // 點工（假日出勤）
 }
 export interface Cell {
   code: Code;
   items: CellItem[];
   note?: string;
+  /** 這格有任何一筆是點工 */
+  daily?: boolean;
 }
 export interface BoardDay {
   date: string;
@@ -159,14 +163,16 @@ export function shapeBoard(
         end: hhmm(a.end_time),
         vehicle: a.vehicles?.name ?? null,
         kind: a.kind,
+        daily: a.pay_mode === "daily",
       }));
+      const daily = items.some((i) => i.daily);
       const onLeave = leaveSet.has(`${p.id}|${d.date}`);
       if (items.length) {
-        if (onLeave) return { code: "X", items, note: "這天已核准請假，但仍有排班，請調整" };
-        if (overlapAny(items)) return { code: "X", items, note: "同一天的工作時間重疊，請調整" };
-        if (d.date < today) return { code: "C", items };
+        if (onLeave) return { code: "X", items, daily, note: "這天已核准請假，但仍有排班，請調整" };
+        if (overlapAny(items)) return { code: "X", items, daily, note: "同一天的工作時間重疊，請調整" };
+        if (d.date < today) return { code: "C", items, daily };
         const k = items[0].kind;
-        return { code: (["S", "R", "V"].includes(k) ? k : "S") as Code, items };
+        return { code: (["S", "R", "V"].includes(k) ? k : "S") as Code, items, daily };
       }
       if (onLeave) return { code: "L", items: [], note: "請假（來自請假表）" };
       if (d.rest) return { code: "-", items: [], note: d.holiday ? `${d.holiday}（國定假日）` : undefined };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { shapeBoard, type BoardPerson } from "../lib/board.js";
-import { CALENDAR_YEARS, HOLIDAYS, MAKEUP_WORKDAYS, hasCalendar, holidayName, isRestDay } from "../lib/holidays.js";
+import { CALENDAR_YEARS, HOLIDAYS, MAKEUP_WORKDAYS, dayInfo, hasCalendar, holidayName, isRestDay } from "../lib/holidays.js";
 import { evaluateItems, type RuleContext } from "../lib/rules.js";
 import type { DraftItem } from "../lib/types.js";
 
@@ -76,7 +76,7 @@ describe("the board on holidays", () => {
   });
 });
 
-describe("scheduling on holidays", () => {
+describe("scheduling on holidays is allowed and not nagged about", () => {
   const people = new Map([
     ["fei", { id: "fei", name: "張欽煌", active: true, constraints: {} }],
     ["lun", { id: "lun", name: "莊岳倫", active: true, constraints: {} }],
@@ -89,13 +89,29 @@ describe("scheduling on holidays", () => {
   });
   const lines = (it: DraftItem) => evaluateItems([it], ctx)[0].map((i) => i.text);
 
-  it("reminds to confirm on a national holiday, but not on an ordinary weekend", () => {
-    expect(lines(item("2026-02-17", ["fei", "lun"]))).toEqual(["2/17 是國定假日（春節），請確認是否要排班"]);
-    expect(lines(item("2026-10-09", ["fei", "lun"]))).toEqual(["10/9 是國定假日（國慶日補假），請確認是否要排班"]);
+  it("no warning at all for a national holiday or a weekend (the red 點 badge marks it instead)", () => {
+    expect(lines(item("2026-02-17", ["fei", "lun"]))).toEqual([]);
     expect(lines(item("2026-11-14", ["fei", "lun"]))).toEqual([]);
   });
-  it("applies the 'avoid weekend' preference to national holidays too", () => {
+  it("still applies the 'avoid weekend' preference to national holidays and weekends", () => {
     expect(lines(item("2026-02-17", ["jie", "fei"]))).toContain("王永杰 假日原則不排");
+    expect(lines(item("2026-11-14", ["jie", "fei"]))).toContain("王永杰 假日原則不排");
     expect(lines(item("2026-11-10", ["jie", "fei"]))).toEqual([]);
+  });
+});
+
+describe("dayInfo: what gets stored with each assignment for payroll", () => {
+  it("workdays are regular pay", () => {
+    expect(dayInfo("2026-11-10")).toEqual({ day_type: "workday", pay_mode: "regular", holiday: null });
+  });
+  it("weekends and national holidays are daily-hire (點工)", () => {
+    expect(dayInfo("2026-11-14")).toEqual({ day_type: "weekend", pay_mode: "daily", holiday: null });
+    expect(dayInfo("2026-11-15")).toMatchObject({ day_type: "weekend", pay_mode: "daily" });
+    expect(dayInfo("2026-02-17")).toEqual({ day_type: "holiday", pay_mode: "daily", holiday: "春節" });
+    expect(dayInfo("2027-12-31")).toMatchObject({ day_type: "holiday", pay_mode: "daily" });
+  });
+  it("years without calendar data still treat weekends as daily and weekdays as regular", () => {
+    expect(dayInfo("2028-01-01").pay_mode).toBe("daily");
+    expect(dayInfo("2028-01-03").pay_mode).toBe("regular");
   });
 });
