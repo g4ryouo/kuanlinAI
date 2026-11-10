@@ -68,22 +68,30 @@ export async function extractTasks(
   }
   content.push({ type: "text", text: input.text?.trim() || "（圖片訊息，請依圖片內容整理）" });
 
-  const res = await fetchImpl("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model,
-      max_tokens: 2000,
-      system: systemPrompt(input),
-      tools: [TOOL],
-      tool_choice: { type: "tool", name: TOOL.name },
-      messages: [{ role: "user", content }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
+  const messages: { role: string; content: unknown }[] = [{ role: "user", content }];
 
-  const data = (await res.json()) as { content?: { type: string; name?: string; input?: Extraction }[] };
-  const block = data.content?.find((b) => b.type === "tool_use" && b.name === TOOL.name);
-  if (!block?.input) return { items: [], question: null };
-  return { items: block.input.items ?? [], question: block.input.question ?? null };
+  // 這個模型不支援強制 tool_choice，改用 auto，並在沒呼叫工具時重試一次
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetchImpl("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2000,
+        system: systemPrompt(input),
+        tools: [TOOL],
+        tool_choice: { type: "auto" },
+        messages,
+      }),
+    });
+    if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
+
+    const data = (await res.json()) as { content?: { type: string; name?: string; input?: Extraction }[] };
+    const block = data.content?.find((b) => b.type === "tool_use" && b.name === TOOL.name);
+    if (block?.input) return { items: block.input.items ?? [], question: block.input.question ?? null };
+
+    messages.push({ role: "assistant", content: data.content ?? [] });
+    messages.push({ role: "user", content: "請呼叫 submit_tasks 回報結果；不是派工訊息就回空的 items。" });
+  }
+  throw new Error("AI 沒有回報結構化結果");
 }

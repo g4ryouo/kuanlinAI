@@ -41,7 +41,7 @@ describe("confirmCard", () => {
 describe("extractTasks", () => {
   const input = { text: "明天飛哥去晶心", today: "2026-11-10", weekday: "二", aliases: ["飛哥"], sites: ["晶心"] };
 
-  it("returns the tool_use payload and forces the tool", async () => {
+  it("returns the tool_use payload using auto tool choice", async () => {
     let body: any;
     const fake = (async (_u: unknown, init: RequestInit) => {
       body = JSON.parse(init.body as string);
@@ -49,13 +49,26 @@ describe("extractTasks", () => {
     }) as typeof fetch;
     const r = await extractTasks(input, "k", "m", fake);
     expect(r.items[0].site).toBe("晶心");
-    expect(body.tool_choice).toEqual({ type: "tool", name: "submit_tasks" });
+    expect(body.tool_choice).toEqual({ type: "auto" });
     expect(body.system).toContain("2026-11-10");
   });
 
-  it("returns empty on missing tool_use and throws on API error", async () => {
-    const empty = (async () => new Response(JSON.stringify({ content: [{ type: "text", text: "hi" }] }), { status: 200 })) as typeof fetch;
-    expect(await extractTasks(input, "k", "m", empty)).toEqual({ items: [], question: null });
+  it("retries once when the model skips the tool, then succeeds", async () => {
+    let calls = 0;
+    const fake = (async () => {
+      calls++;
+      const content = calls === 1
+        ? [{ type: "text", text: "好的" }]
+        : [{ type: "tool_use", name: "submit_tasks", input: { items: [], question: null } }];
+      return new Response(JSON.stringify({ content }), { status: 200 });
+    }) as typeof fetch;
+    expect(await extractTasks(input, "k", "m", fake)).toEqual({ items: [], question: null });
+    expect(calls).toBe(2);
+  });
+
+  it("throws if the model never calls the tool, and on API errors", async () => {
+    const none = (async () => new Response(JSON.stringify({ content: [{ type: "text", text: "hi" }] }), { status: 200 })) as typeof fetch;
+    await expect(extractTasks(input, "k", "m", none)).rejects.toThrow("結構化");
     const bad = (async () => new Response("nope", { status: 500 })) as typeof fetch;
     await expect(extractTasks(input, "k", "m", bad)).rejects.toThrow("500");
   });
