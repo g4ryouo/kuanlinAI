@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "api/line/webhook.ts": { "maxDuration": 60 }
+  }
+}
