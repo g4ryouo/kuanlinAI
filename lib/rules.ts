@@ -1,4 +1,5 @@
 import { headcountWarning } from "./draft.js";
+import { isRestDay } from "./holidays.js";
 import type { DraftItem } from "./types.js";
 
 export interface PersonInfo {
@@ -30,13 +31,12 @@ const DELIVERY = /送貨|送料/;
 const WATER = /水電|給排水|排水|給水|水管|配管/;
 const LOW_VOLTAGE = /弱電|監視|網路|攝影|門禁|對講/;
 
-const mmdd = (d: string) => d.slice(5).replace("-", "/");
+const mmdd = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 const toMin = (t: string | null | undefined): number | null => {
   const m = t ? /^(\d{1,2}):(\d{2})/.exec(t) : null;
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
 const hhmm = (t: string) => t.slice(0, 5);
-const isWeekend = (d: string) => [0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay());
 const overlap = (a1: number, a2: number, b1: number, b2: number) => a1 < b2 && b1 < a2;
 
 /** 會改動人員名單的自動規則：排除請假／停用的人，水電工作預設排阿鎮 */
@@ -97,8 +97,8 @@ export function evaluateItems(items: DraftItem[], ctx: RuleContext): Issue[][] {
       }
     }
 
-    // 假日：阿杰原則不排
-    if (it.date && isWeekend(it.date)) {
+    // 假日（週末與國定假日）：阿杰原則不排
+    if (it.date && isRestDay(it.date)) {
       for (const id of ids) {
         if (ctx.people.get(id)?.constraints.avoid_weekend === true) {
           issues.push({ level: "warn", text: `${nameOf(id)} 假日原則不排` });

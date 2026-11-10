@@ -89,8 +89,7 @@ class Component extends DCLogic {
       ['阿杰', '', ['-', 'CCCCC--', 'VRPSS--', 'SPSPS--', 'PSSPS--', 'P']],
       ['阿盛', '助手', ['-', 'CCPCC--', 'PPPPS--', 'PSPSP--', 'PPPPP--', 'P']],
       ['阿澤', '點工', ['-', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'N']],
-      ['阿鎮團隊', '4 人·外包', ['-', 'CCCCC--', 'SSSXS--', 'SSSSS--', 'SSSSS--', 'S']],
-      ['阿國團隊', '外包·未啟用', ['-', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'NNNNN--', 'N']]
+      ['阿鎮團隊', '4 人·外包', ['-', 'CCCCC--', 'SSSXS--', 'SSSSS--', 'SSSSS--', 'S']]
     ];
     const heads = [];
     for (let d = 1; d <= 30; d++) { const w = (d - 1) % 7; heads.push({ d, w: WD[w], cls: (d === 9 ? 'today' : '') + (w === 0 || w === 6 ? ' wk' : '') }); }

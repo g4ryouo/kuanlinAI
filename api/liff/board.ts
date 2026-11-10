@@ -22,7 +22,7 @@ export async function GET(request: Request): Promise<Response> {
     if (e1) throw e1;
     const { data: asg, error: e2 } = await db()
       .from("assignments")
-      .select("person_id, work_date, start_time, end_time, kind, vehicles(name), tasks(title, sites(name))")
+      .select("person_id, work_date, start_time, end_time, kind, pay_mode, vehicles(name), tasks(title, sites(name))")
       .gte("work_date", from)
       .lte("work_date", to);
     if (e2) throw e2;

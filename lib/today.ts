@@ -4,6 +4,7 @@ export interface AssignmentRow {
   start_time: string | null;
   end_time: string | null;
   kind: string;
+  pay_mode?: string | null;
   people: { name: string } | null;
   vehicles: { name: string } | null;
   tasks: { title: string; sites: { name: string } | null } | null;
@@ -17,6 +18,7 @@ export interface TodayGroup {
   start: string | null;
   end: string | null;
   vehicle: string | null;
+  daily: boolean; // 點工（假日出勤）
   people: string[];
 }
 
@@ -53,10 +55,12 @@ export function shapeToday(date: string, rows: AssignmentRow[], leaveNames: stri
         start,
         end,
         vehicle,
+        daily: false,
         people: [],
       };
       map.set(key, g);
     }
+    if (r.pay_mode === "daily") g.daily = true;
     const name = r.people?.name;
     if (name && !g.people.includes(name)) g.people.push(name);
   }

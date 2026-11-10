@@ -117,9 +117,16 @@ describe("the board page", () => {
     expect(html).toContain("/api/liff/board");
     expect(html).toContain("Authorization");
   });
-  it("shows a code letter on every cell (color is never the only signal) and a legend for all eight codes", () => {
-    expect(html).toContain("b.textContent = cell.code");
-    for (const k of ["S", "R", "V", "P", "L", "X", "C", "N"]) expect(html).toMatch(new RegExp(`${k}: '`));
+  it("shows Chinese symbols on the cells, keeps pending cells empty, and explains every code in the legend", () => {
+    expect(html).toContain("b.textContent = SYMBOL[cell.code]");
+    const want = { S: "工", R: "修", V: "勘", P: "", L: "假", X: "❌", C: "✅", N: "未" };
+    for (const [k, v] of Object.entries(want)) expect(html).toContain(`${k}: '${v}'`);
+    for (const label of ["施工", "維修", "場勘／會議", "待排", "請假", "衝突", "已完成", "未叫工"]) expect(html).toContain(`'${label}'`);
+    expect(html).toContain("待排（黃底空白）");
+  });
+  it("every cell still carries its meaning for screen readers", () => {
+    expect(html).toContain("b.setAttribute('aria-label'");
+    expect(html).toContain("(LABEL[cell.code] || '')");
   });
   it("has accessible controls and a link to today's work", () => {
     expect(html).toContain('aria-label="上一頁"');
