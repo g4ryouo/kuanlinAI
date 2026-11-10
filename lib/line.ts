@@ -15,6 +15,16 @@ export function verifySignature(rawBody: string, signature: string | null, secre
 
 export type LineMessage = Record<string, unknown>;
 
+/** 主動推播給某位使用者（會消耗官方帳號每月的推播則數） */
+export async function pushMessages(to: string, messages: LineMessage[], accessToken: string): Promise<{ ok: boolean; status: number; detail?: string }> {
+  const res = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ to, messages }),
+  });
+  return res.ok ? { ok: true, status: res.status } : { ok: false, status: res.status, detail: (await res.text()).slice(0, 200) };
+}
+
 export async function replyMessages(replyToken: string, messages: LineMessage[], accessToken: string): Promise<void> {
   const res = await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",

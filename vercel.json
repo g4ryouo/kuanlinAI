@@ -8,12 +8,19 @@
     },
     "api/liff.ts": {
       "maxDuration": 60
+    },
+    "api/cron/morning.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/cron/sync-leaves",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/morning",
+      "schedule": "30 23 * * *"
     }
   ],
   "rewrites": [
