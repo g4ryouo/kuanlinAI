@@ -20,3 +20,13 @@ LINE 內 AI 排班特助的畫面原型。**所有人名、案場、日期都是
 ## 線上預覽（GitHub Pages）
 
 Settings → Pages → Source 選 `Deploy from a branch`，Branch 選 `main`、資料夾 `/ (root)`，存檔後約一分鐘就能用 `https://g4ryouo.github.io/kuanlinAI/` 打開。
+
+---
+
+## 後端（開發中）
+
+`api/line/webhook.ts` 是 LINE Webhook：驗證簽章、白名單、原始訊息存檔。原型頁面維持在網站根目錄，不受影響。
+
+- 資料表：`supabase/migrations/0001_init.sql`
+- 環境變數：見 `.env.example`（金鑰只放 Vercel 環境變數，不進程式碼）
+- 測試：`npm install && npm test`
