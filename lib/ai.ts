@@ -34,9 +34,21 @@ const TOOL = {
           required: ["site", "work", "date", "time_slot", "people", "vehicle", "headcount", "priority", "fixed", "uncertain"],
         },
       },
+      leaves: {
+        type: "array",
+        description: "訊息中提到請假或休假的人。請假不是工作，不要放進 items。",
+        items: {
+          type: "object",
+          properties: {
+            person: { type: "string", description: "人員稱呼，照原文" },
+            date: { type: ["string", "null"], description: "YYYY-MM-DD，沒提就 null" },
+          },
+          required: ["person", "date"],
+        },
+      },
       question: { type: ["string", "null"], description: "資訊不足以整理時，要問冠璋的一句繁體中文問題；否則 null" },
     },
-    required: ["items", "question"],
+    required: ["items", "leaves", "question"],
   },
 } as const;
 
@@ -52,6 +64,8 @@ function systemPrompt(i: ExtractInput): string {
     "- LINE 轉傳不帶來源，訊息沒有案場或客戶名稱時，site 填 null，並在 question 問是哪個案場。",
     "- 訊息不是派工或任務（閒聊、問候）時，items 回空陣列，question 填 null。",
     "- 一則訊息可能含多件工作，各自一筆。",
+    "- 沒有說明要做什麼工作時，work 填「待確認」並把 work 放進 uncertain，不要自行編造工作內容。",
+    "- 提到某人請假或休假：放進 leaves（person、date），不要當成工作。",
     "一律呼叫 submit_tasks 回報。",
   ].join("\n");
 }
@@ -88,7 +102,9 @@ export async function extractTasks(
 
     const data = (await res.json()) as { content?: { type: string; name?: string; input?: Extraction }[] };
     const block = data.content?.find((b) => b.type === "tool_use" && b.name === TOOL.name);
-    if (block?.input) return { items: block.input.items ?? [], question: block.input.question ?? null };
+    if (block?.input) {
+      return { items: block.input.items ?? [], leaves: block.input.leaves ?? [], question: block.input.question ?? null };
+    }
 
     messages.push({ role: "assistant", content: data.content ?? [] });
     messages.push({ role: "user", content: "請呼叫 submit_tasks 回報結果；不是派工訊息就回空的 items。" });

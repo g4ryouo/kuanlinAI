@@ -2,7 +2,7 @@ import { db } from "./db.js";
 import { env } from "./env.js";
 import { extractTasks } from "./ai.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
-import { confirmCard, parsePostback, reassignQuickReply } from "./flex.js";
+import { confirmCard, leaveText, parsePostback, reassignQuickReply } from "./flex.js";
 import { getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
 import type { DraftItem } from "./types.js";
 
@@ -75,7 +75,13 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     env("ANTHROPIC_MODEL") || undefined,
   );
 
+  const leaves = extraction.leaves.map((l) => ({ ...l, person_name: aliasMap.get(l.person.trim())?.name }));
+
   if (!extraction.items.length) {
+    if (leaves.length) {
+      await reply(ev, [text(leaveText(leaves))]);
+      return;
+    }
     await reply(ev, [text(extraction.question ?? "我沒有從這則訊息看到要排的工作。要新增任務的話，請附上案場和內容。")]);
     return;
   }
@@ -92,7 +98,7 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
     .single();
   if (error || !draft) throw error ?? new Error("draft insert failed");
 
-  const messages: LineMessage[] = [confirmCard(draft.id, items)];
+  const messages: LineMessage[] = [confirmCard(draft.id, items, leaves)];
   if (extraction.question) messages.unshift(text(extraction.question));
   await reply(ev, messages);
 }
