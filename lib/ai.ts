@@ -1,3 +1,4 @@
+import type { EditOp } from "./jobEdit.js";
 import type { Extraction } from "./types.js";
 
 export interface ExtractInput {
@@ -147,6 +148,91 @@ export async function extractTasks(
 
     messages.push({ role: "assistant", content: data.content ?? [] });
     messages.push({ role: "user", content: "請呼叫 submit_tasks 回報結果；不是派工訊息就回空的 items。" });
+  }
+  throw new Error("AI 沒有回報結構化結果");
+}
+
+// ---- 修改確認卡上的工作 ----
+
+export interface EditInput {
+  text: string;
+  /** describeItems() 的結果：目前卡片上各項的內容 */
+  current: string;
+  today: string;
+  weekday: string;
+  aliases: string[];
+  sites: string[];
+}
+
+const EDIT_TOOL = {
+  name: "submit_edits",
+  description: "回報要對確認卡上哪幾項改什麼。沒提到的欄位不要放進去。",
+  input_schema: {
+    type: "object",
+    properties: {
+      edits: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            index: { type: "integer", description: "第幾項（從 1 開始）。只有一項時就是 1" },
+            remove: { type: "boolean", description: "整項不要了" },
+            site: { type: ["string", "null"], description: "改成這個案場" },
+            work: { type: "string", description: "改成這個工作內容，簡短" },
+            date: { type: ["string", "null"], description: "改成這天 YYYY-MM-DD" },
+            start_time: { type: ["string", "null"], description: "HH:MM 24 小時制" },
+            end_time: { type: ["string", "null"], description: "HH:MM 24 小時制" },
+            people: { type: "array", items: { type: "string" }, description: "整份人員名單改成這些，照訊息原文稱呼；「加上某人」「少某人」要依目前名單算出最後完整名單" },
+            vehicle: { type: ["string", "null"], description: "ZINGER、WISH 或 CR-V；不用車填 null" },
+            headcount: { type: ["integer", "null"] },
+          },
+          required: ["index"],
+        },
+      },
+      question: { type: ["string", "null"], description: "看不懂要改什麼、或不知道是哪一項時，問冠璋的一句繁體中文問題；否則 null" },
+    },
+    required: ["edits", "question"],
+  },
+} as const;
+
+function editPrompt(i: EditInput): string {
+  return [
+    "你是寬林公司的派工助理。冠璋看著一張「請確認這些工作」的卡片，現在用一句話告訴你要改什麼。使用繁體中文。",
+    `今天是 ${i.today}（星期${i.weekday}），時區台北。「明天」「下週一」等相對日期請換算成 YYYY-MM-DD。`,
+    `已知人員稱呼：${i.aliases.join("、")}。`,
+    `已知案場：${i.sites.join("、")}。`,
+    "目前卡片上的內容：",
+    i.current,
+    "規則：",
+    "- 只回報冠璋明確要改的欄位，沒提到的欄位不要放進 edits。",
+    "- 卡片只有一項時，index 一律是 1；有多項而訊息沒說是哪一項、又無法從案場或工作判斷時，不要猜，edits 回空陣列並在 question 問。",
+    "- 一則訊息可以同時改多個欄位或多項。",
+    "- 只說一個時間（例如「改成 9 點」）是開始時間；沒提結束時間就不要動結束時間。",
+    "- 人員：回報改完之後的完整名單，照訊息原文稱呼，不要推測沒提到的人。",
+    "- 如果訊息不是在修改（例如閒聊或問問題），edits 回空陣列。",
+    "一律呼叫 submit_edits 回報。",
+  ].join("\n");
+}
+
+export async function extractEdits(
+  input: EditInput,
+  apiKey: string,
+  model = "claude-sonnet-5-5",
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ edits: EditOp[]; question: string | null }> {
+  const messages: { role: string; content: unknown }[] = [{ role: "user", content: input.text.trim() }];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetchImpl("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model, max_tokens: 1000, system: editPrompt(input), tools: [EDIT_TOOL], tool_choice: { type: "auto" }, messages }),
+    });
+    if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { content?: { type: string; name?: string; input?: { edits?: EditOp[]; question?: string | null } }[] };
+    const block = data.content?.find((b) => b.type === "tool_use" && b.name === EDIT_TOOL.name);
+    if (block?.input) return { edits: Array.isArray(block.input.edits) ? block.input.edits : [], question: block.input.question ?? null };
+    messages.push({ role: "assistant", content: data.content ?? [] });
+    messages.push({ role: "user", content: "請呼叫 submit_edits 回報；看不懂就回空的 edits 並在 question 問。" });
   }
   throw new Error("AI 沒有回報結構化結果");
 }

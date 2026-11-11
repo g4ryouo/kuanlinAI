@@ -74,12 +74,13 @@ export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNo
     type: "button", style: primary ? "primary" : "secondary", height: "sm",
     action: { type: "postback", label, data, displayText: label },
   });
+  const editing = items.some((it) => it.task_id);
   return {
     type: "flex",
-    altText: `確認新增 ${items.length} 項工作`,
+    altText: `${editing ? "確認修改" : "確認新增"} ${items.length} 項工作`,
     contents: {
       type: "bubble",
-      header: { type: "box", layout: "vertical", contents: [{ type: "text", text: "請確認這些工作", weight: "bold", size: "lg" }] },
+      header: { type: "box", layout: "vertical", contents: [{ type: "text", text: editing ? "請確認修改這些工作" : "請確認這些工作", weight: "bold", size: "lg" }] },
       body: {
         type: "box", layout: "vertical",
         contents: [
@@ -92,7 +93,8 @@ export function confirmCard(draftId: string, items: DraftItem[], leaves: LeaveNo
       footer: {
         type: "box", layout: "vertical", spacing: "sm",
         contents: [
-          btn("確認新增", `a=confirm&d=${draftId}`, true),
+          btn(editing ? "確認修改" : "確認新增", `a=confirm&d=${draftId}`, true),
+          btn("修改內容", `a=edit&d=${draftId}`),
           btn("改派人員", `a=reassign&d=${draftId}`),
           btn("選擇車輛", `a=vehicle&d=${draftId}`),
           btn("稍後處理", `a=later&d=${draftId}`),
@@ -192,6 +194,44 @@ export function followCard(draftId: string, items: FollowUpDraft[]): LineMessage
       header: { type: "box", layout: "vertical", contents: [{ type: "text", text: "要加入追蹤嗎？", weight: "bold", size: "lg" }] },
       body: { type: "box", layout: "vertical", contents: items.map(box) },
       footer: { type: "box", layout: "vertical", spacing: "sm", contents: [btn("加入追蹤", `a=fconfirm&d=${draftId}`, true), btn("不用了", `a=fskip&d=${draftId}`)] },
+    },
+  };
+}
+
+export interface EditableJob {
+  task_id: string;
+  title: string;
+  date: string | null; // YYYY-MM-DD
+}
+
+export const MAX_EDIT_LIST = 8;
+
+/** 「修改工作」：列出今天起還沒做完的工作，每項一顆「修改」按鈕（postback 的 d 放工作 id） */
+export function editListCard(jobs: EditableJob[]): LineMessage {
+  const md = (d: string | null) => (d ? `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}` : "日期未定");
+  const shown = jobs.slice(0, MAX_EDIT_LIST);
+  return {
+    type: "flex",
+    altText: "要修改哪一項工作？",
+    contents: {
+      type: "bubble",
+      header: { type: "box", layout: "vertical", contents: [{ type: "text", text: "要修改哪一項？", weight: "bold", size: "lg" }] },
+      body: {
+        type: "box", layout: "vertical", spacing: "md",
+        contents: shown.map((j) => ({
+          type: "box", layout: "horizontal", spacing: "sm", alignItems: "center",
+          contents: [
+            {
+              type: "box", layout: "vertical", flex: 5,
+              contents: [
+                { type: "text", text: j.title.slice(0, 40), size: "sm", wrap: true, color: "#1B2420" },
+                { type: "text", text: md(j.date), size: "xs", color: "#8a8f8c" },
+              ],
+            },
+            { type: "button", style: "secondary", height: "sm", flex: 3, action: { type: "postback", label: "修改", data: `a=editjob&d=${j.task_id}`, displayText: `修改 ${j.title}`.slice(0, 40) } },
+          ],
+        })),
+      },
     },
   };
 }
