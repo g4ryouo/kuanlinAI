@@ -12,6 +12,7 @@ export interface DraftItem {
   start_time?: string | null; // HH:MM，只有訊息明確提到幾點才有
   end_time?: string | null;
   uncertain: string[]; // 不確定、需冠璋確認的欄位名稱
+  task_id?: string; // 有值＝這是在修改已排進班表的工作，確認時更新而不是新增
   // 以下由後端依別名字典填入
   person_ids?: string[];
   person_names?: string[];

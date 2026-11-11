@@ -1,6 +1,6 @@
 import { db } from "./db.js";
 import { env } from "./env.js";
-import { extractTasks } from "./ai.js";
+import { extractEdits, extractTasks } from "./ai.js";
 import { dayInfo } from "./holidays.js";
 import { isEmptyItem } from "./draft.js";
 import { AWAIT_WORK_MINUTES, MAX_WORK_TEXT, VEHICLE_OPTIONS, needsWork, normalizeVehicle, workKind } from "./draft.js";
@@ -13,13 +13,15 @@ import { formatFollowups, formatToday } from "./summaries.js";
 import { loadTodayView } from "./todayData.js";
 import { syncLeaves } from "./syncLeaves.js";
 import { resolveNames, type AliasMap } from "./aliases.js";
-import { MAX_PICK, confirmCard, followCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
+import { MAX_PICK, confirmCard, editListCard, followCard, expandId, leaveText, parsePostback, reassignQuickReply, vehicleQuickReply } from "./flex.js";
 import { applyAutoRules, blockTexts, evaluateItems } from "./rules.js";
 import { loadRuleContext } from "./ruleContext.js";
 import type { FollowUpDraft, LeaveNote } from "./types.js";
 import { transcribe, transcribePrompt } from "./transcribe.js";
 import { getAudioContent, getImageContent, replyMessages, type LineEvent, type LineMessage } from "./line.js";
 import type { DraftItem } from "./types.js";
+import { applyEdits, describeItems } from "./jobEdit.js";
+import { AWAIT_EDIT_MINUTES, draftItemFromTask, findEditingDraft, latestOpenDraft, listEditableJobs, saveEditedTask } from "./editFlow.js";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
@@ -92,6 +94,55 @@ async function tryFillWork(ev: LineEvent, userId: string, content: string): Prom
   return true;
 }
 
+const EDIT_HINT = `直接告訴我要改什麼就好（文字或語音都可以），例如：
+・工作改成「冷氣維修」
+・改到明天 9 點
+・人員換成阿哲、小張
+・案場改成晶心，再加一台 ZINGER
+${AWAIT_EDIT_MINUTES} 分鐘內回覆有效；改完還可以繼續改。`;
+
+/** 冠璋按了「修改內容」後的下一則訊息：交給 AI 整理成修改，套用到那張卡，再重新給他確認 */
+async function tryEdit(ev: LineEvent, userId: string, content: string, aliasMap: AliasMap, siteNames: string[]): Promise<boolean> {
+  const draft = await findEditingDraft(userId);
+  if (!draft) return false;
+  const { today, weekday } = taipeiToday();
+  const { edits, question } = await extractEdits(
+    { text: content, current: describeItems(draft.items), today, weekday, aliases: [...aliasMap.keys()], sites: siteNames },
+    env("ANTHROPIC_API_KEY"),
+    env("ANTHROPIC_MODEL") || undefined,
+  );
+  if (!edits.length) {
+    if (!question) return false; // 不像是修改，當作一般訊息繼續處理
+    await reply(ev, [text(question)]);
+    return true;
+  }
+  const result = applyEdits(draft.items, edits, aliasMap);
+  if (!result.items.length) {
+    await db().from("drafts").update({ items: [], status: "cancelled", handled_at: new Date().toISOString(), awaiting_edit_at: null }).eq("id", draft.id);
+    await reply(ev, [text("這張卡的工作都移除了，已取消。")]);
+    return true;
+  }
+  const ctx0 = await loadRuleContext(result.items);
+  const items = applyAutoRules(result.items, ctx0);
+  const ctx = await loadRuleContext(items);
+  await db().from("drafts").update({ items, awaiting_work_at: null, ...(result.changed ? { awaiting_edit_at: new Date().toISOString() } : {}) }).eq("id", draft.id);
+  await reply(ev, [
+    ...(result.notes.length ? [text(result.notes.join("\n"))] : []),
+    confirmCard(draft.id, items, (draft.leaves ?? []) as LeaveNote[], evaluateItems(items, ctx)),
+  ]);
+  return true;
+}
+
+/** 「修改工作」：列出還沒做完的工作讓冠璋挑 */
+async function replyEditList(ev: LineEvent): Promise<void> {
+  const jobs = await listEditableJobs(taipeiToday().today);
+  if (!jobs.length) {
+    await reply(ev, [text("目前沒有可以修改的工作（今天起、還沒做完的）。")]);
+    return;
+  }
+  await reply(ev, [editListCard(jobs), ...(jobs.length > 8 ? [text(`只列出最近的 8 項，共 ${jobs.length} 項。`)] : [])]);
+}
+
 export async function handleMessage(ev: LineEvent, rawMessageId: string | null): Promise<void> {
   const msg = ev.message;
   const userId = ev.source?.userId;
@@ -127,6 +178,24 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
       await reply(ev, [text(`同步失敗：${shortError(e)}`)]);
     }
     return;
+  }
+
+  if (msg.type === "text" && /^(修改|編輯|改)(工作|派工)?$/.test(msg.text?.trim() ?? "")) {
+    try {
+      await replyEditList(ev);
+    } catch (e) {
+      await reply(ev, [text(`讀取工作失敗：${shortError(e)}`)]);
+    }
+    return;
+  }
+
+  // 沒辦法按按鈕時，直接打「確認」也能確認最近那張卡
+  if (msg.type === "text" && /^確認(新增|修改)?(工作)?$/.test(msg.text?.trim() ?? "")) {
+    const open = await latestOpenDraft(userId);
+    if (open) {
+      await confirmDraft(ev, open.id);
+      return;
+    }
   }
 
   const aliasMap = await loadAliasMap();
@@ -166,6 +235,8 @@ export async function handleMessage(ev: LineEvent, rawMessageId: string | null):
   // 讓使用者核對辨識結果
   const withHeard = (messages: LineMessage[]): LineMessage[] =>
     heard ? [text(`我聽到：「${heard}」\n如果聽錯了，請直接打字更正後重傳。`), ...messages] : messages;
+
+  if (inputText?.trim() && (await tryEdit(ev, userId, inputText, aliasMap, siteNames))) return;
 
   if (inputText && inputText.trim().length <= MAX_WORK_TEXT) {
     if (await tryFillWork(ev, userId, inputText.trim())) return;
@@ -278,86 +349,133 @@ export function sanitizeFollowUps(list: FollowUpDraft[] | undefined): FollowUpDr
     }));
 }
 
+/** 按「確認新增／確認修改」，或直接在聊天室打「確認」 */
+async function confirmDraft(ev: LineEvent, draftId: string): Promise<void> {
+  const done = () => reply(ev, [text("這張卡已經處理過了。")]);
+  const { data: cur } = await db().from("drafts").select("items, status").eq("id", draftId).maybeSingle();
+  if (!cur || !["pending", "later"].includes(cur.status)) return void (await done());
+
+  const missing = (cur.items as DraftItem[]).filter(needsWork).length;
+  if (missing) {
+    await db().from("drafts").update({ awaiting_work_at: new Date().toISOString() }).eq("id", draftId);
+    await reply(ev, [
+      text(
+        `還沒填工作內容，不能確認。\n請直接回覆工作內容（例如：弱電施工、監視器維修）${missing > 1 ? "，會套用到所有未填的項目" : ""}。${AWAIT_WORK_MINUTES} 分鐘內回覆有效。`,
+      ),
+    ]);
+    return;
+  }
+
+  const blocks = blockTexts(evaluateItems(cur.items as DraftItem[], await loadRuleContext(cur.items as DraftItem[])));
+  if (blocks.length) {
+    await reply(ev, [text(`有衝突，不能確認：\n${blocks.map((b) => `・${b}`).join("\n")}\n請先按「改派人員」調整。`)]);
+    return;
+  }
+
+  const { data: draft } = await db()
+    .from("drafts")
+    .update({ status: "confirmed", handled_at: new Date().toISOString() })
+    .eq("id", draftId)
+    .in("status", ["pending", "later"])
+    .select("items")
+    .maybeSingle();
+  if (!draft) return void (await done());
+
+  const items = draft.items as DraftItem[];
+  const { data: vlist } = await db().from("vehicles").select("id, name");
+  const vehicleId = new Map((vlist ?? []).map((v: { id: string; name: string }) => [v.name, v.id]));
+  let assigned = 0;
+  let edited = 0;
+  for (const it of items) {
+    if (it.task_id) {
+      // 修改已經排好的工作：更新原本那筆，不要重複新增
+      assigned += (await saveEditedTask(it, vehicleId)).people;
+      edited++;
+      continue;
+    }
+    const { data: site } = it.site
+      ? await db().from("sites").select("id").eq("name", it.site).maybeSingle()
+      : { data: null };
+    const { data: task, error } = await db()
+      .from("tasks")
+      .insert({
+        title: [it.site, it.work].filter(Boolean).join(" "),
+        site_id: site?.id ?? null,
+        status: "to_handle",
+        priority: it.priority,
+        work: it.work,
+        wanted_date: it.date,
+        headcount: it.headcount,
+        start_time: it.start_time ?? null,
+        end_time: it.end_time ?? null,
+      })
+      .select("id")
+      .single();
+    if (error || !task) throw error ?? new Error("task insert failed");
+
+    if (it.date && it.person_ids?.length) {
+      const rows = it.person_ids.map((pid) => ({
+        task_id: task.id, person_id: pid, work_date: it.date, kind: workKind(it.work), fixed: it.fixed,
+        start_time: it.start_time ?? null, end_time: it.end_time ?? null,
+        vehicle_id: (it.vehicle && vehicleId.get(it.vehicle)) || null,
+        day_type: dayInfo(it.date!).day_type,
+        pay_mode: dayInfo(it.date!).pay_mode,
+      }));
+      const { error: aerr } = await db().from("assignments").insert(rows);
+      if (aerr) throw aerr;
+      assigned += rows.length;
+    }
+  }
+  const special = items.some((it) => it.vehicle_special);
+  await db().from("audit_log").insert({
+    actor: ev.source?.userId ?? "unknown", action: edited ? "draft.confirm_edit" : "draft.confirm", entity: "drafts", entity_id: draftId,
+    detail: special ? { cr_v_special: true, edited } : edited ? { edited } : null,
+  });
+  const pool = items.filter((it) => !it.date || !it.person_ids?.length).length;
+  const head = edited === items.length ? `已修改 ${edited} 項工作，目前排 ${assigned} 人次。` : `已新增 ${items.length - edited} 項工作${edited ? `、修改 ${edited} 項` : ""}，排入 ${assigned} 人次。`;
+  await reply(ev, [text(`${head}${pool ? `\n${pool} 項缺日期或人員，先放在待排池。` : ""}${special ? "\nCR-V 特例使用，記得向冠璋確認。" : ""}`)]);
+  return;
+}
+
 export async function handlePostback(ev: LineEvent): Promise<void> {
   const pb = ev.postback ? parsePostback(ev.postback.data) : null;
   if (!pb) return;
   const done = () => reply(ev, [text("這張卡已經處理過了。")]);
 
   if (pb.a === "confirm") {
-    const { data: cur } = await db().from("drafts").select("items, status").eq("id", pb.d).maybeSingle();
-    if (!cur || !["pending", "later"].includes(cur.status)) return void (await done());
+    await confirmDraft(ev, pb.d);
+    return;
+  }
 
-    const missing = (cur.items as DraftItem[]).filter(needsWork).length;
-    if (missing) {
-      await db().from("drafts").update({ awaiting_work_at: new Date().toISOString() }).eq("id", pb.d);
-      await reply(ev, [
-        text(
-          `還沒填工作內容，不能確認新增。\n請直接回覆工作內容（例如：弱電施工、監視器維修）${missing > 1 ? "，會套用到所有未填的項目" : ""}。${AWAIT_WORK_MINUTES} 分鐘內回覆有效。`,
-        ),
-      ]);
-      return;
-    }
-
-    const blocks = blockTexts(evaluateItems(cur.items as DraftItem[], await loadRuleContext(cur.items as DraftItem[])));
-    if (blocks.length) {
-      await reply(ev, [text(`有衝突，不能確認新增：\n${blocks.map((b) => `・${b}`).join("\n")}\n請先按「改派人員」調整。`)]);
-      return;
-    }
-
-    const { data: draft } = await db()
+  if (pb.a === "edit") {
+    const { data } = await db()
       .from("drafts")
-      .update({ status: "confirmed", handled_at: new Date().toISOString() })
+      .update({ awaiting_edit_at: new Date().toISOString(), awaiting_work_at: null })
       .eq("id", pb.d)
       .in("status", ["pending", "later"])
-      .select("items")
+      .select("id")
       .maybeSingle();
-    if (!draft) return void (await done());
+    if (!data) return void (await done());
+    await reply(ev, [text(EDIT_HINT)]);
+    return;
+  }
 
-    const items = draft.items as DraftItem[];
-    const { data: vlist } = await db().from("vehicles").select("id, name");
-    const vehicleId = new Map((vlist ?? []).map((v: { id: string; name: string }) => [v.name, v.id]));
-    let assigned = 0;
-    for (const it of items) {
-      const { data: site } = it.site
-        ? await db().from("sites").select("id").eq("name", it.site).maybeSingle()
-        : { data: null };
-      const { data: task, error } = await db()
-        .from("tasks")
-        .insert({
-          title: [it.site, it.work].filter(Boolean).join(" "),
-          site_id: site?.id ?? null,
-          status: "to_handle",
-          priority: it.priority,
-          work: it.work,
-          wanted_date: it.date,
-          headcount: it.headcount,
-          start_time: it.start_time ?? null,
-          end_time: it.end_time ?? null,
-        })
-        .select("id")
-        .single();
-      if (error || !task) throw error ?? new Error("task insert failed");
-
-      if (it.date && it.person_ids?.length) {
-        const rows = it.person_ids.map((pid) => ({
-          task_id: task.id, person_id: pid, work_date: it.date, kind: workKind(it.work), fixed: it.fixed,
-          start_time: it.start_time ?? null, end_time: it.end_time ?? null,
-          vehicle_id: (it.vehicle && vehicleId.get(it.vehicle)) || null,
-          day_type: dayInfo(it.date!).day_type,
-          pay_mode: dayInfo(it.date!).pay_mode,
-        }));
-        const { error: aerr } = await db().from("assignments").insert(rows);
-        if (aerr) throw aerr;
-        assigned += rows.length;
-      }
+  if (pb.a === "editjob") {
+    const userId = ev.source?.userId;
+    if (!userId) return;
+    const item = await draftItemFromTask(pb.d);
+    if (!item) {
+      await reply(ev, [text("找不到這項工作，可能已經完成或取消了。")]);
+      return;
     }
-    const special = items.some((it) => it.vehicle_special);
-    await db().from("audit_log").insert({
-      actor: ev.source?.userId ?? "unknown", action: "draft.confirm", entity: "drafts", entity_id: pb.d,
-      detail: special ? { cr_v_special: true } : null,
-    });
-    const pool = items.filter((it) => !it.date || !it.person_ids?.length).length;
-    await reply(ev, [text(`已新增 ${items.length} 項工作，排入 ${assigned} 人次。${pool ? `\n${pool} 項缺日期或人員，先放在待排池。` : ""}${special ? "\nCR-V 特例使用，記得向冠璋確認。" : ""}`)]);
+    const { data: draft, error } = await db()
+      .from("drafts")
+      .insert({ line_user_id: userId, items: [item], awaiting_edit_at: new Date().toISOString() })
+      .select("id")
+      .single();
+    if (error || !draft) throw error ?? new Error("edit draft insert failed");
+    const ctx = await loadRuleContext([item]);
+    await reply(ev, [text(`好，要改這項工作的哪裡？\n${EDIT_HINT}`), confirmCard(draft.id, [item], [], evaluateItems([item], ctx))]);
     return;
   }
 

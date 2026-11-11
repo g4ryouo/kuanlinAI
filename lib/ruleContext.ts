@@ -2,7 +2,9 @@ import { db } from "./db.js";
 import type { ExistingAssignment, PersonInfo, RuleContext } from "./rules.js";
 import type { DraftItem } from "./types.js";
 
-export async function loadRuleContext(items: DraftItem[], extraLeaves: string[] = []): Promise<RuleContext> {
+/** excludeTaskIds：正在修改的工作自己的排班不算衝突（否則改個時間會跟舊的自己重疊） */
+export async function loadRuleContext(items: DraftItem[], extraLeaves: string[] = [], excludeTaskIds: string[] = []): Promise<RuleContext> {
+  const skip = new Set([...excludeTaskIds, ...items.flatMap((i) => (i.task_id ? [i.task_id] : []))]);
   const dates = [...new Set(items.map((i) => i.date).filter((d): d is string => !!d))];
   const { data: ppl, error } = await db().from("people").select("id, name, active, constraints");
   if (error) throw error;
@@ -14,9 +16,10 @@ export async function loadRuleContext(items: DraftItem[], extraLeaves: string[] 
     for (const l of (lv ?? []) as { person_id: string; leave_date: string }[]) leaves.add(`${l.person_id}|${l.leave_date}`);
     const { data: asg } = await db()
       .from("assignments")
-      .select("person_id, work_date, start_time, end_time, tasks(title), vehicles(name)")
+      .select("task_id, person_id, work_date, start_time, end_time, tasks(title), vehicles(name)")
       .in("work_date", dates);
-    for (const a of (asg ?? []) as unknown as { person_id: string; work_date: string; start_time: string | null; end_time: string | null; tasks: { title: string } | null; vehicles: { name: string } | null }[]) {
+    for (const a of (asg ?? []) as unknown as { task_id: string | null; person_id: string; work_date: string; start_time: string | null; end_time: string | null; tasks: { title: string } | null; vehicles: { name: string } | null }[]) {
+      if (a.task_id && skip.has(a.task_id)) continue;
       existing.push({ person_id: a.person_id, work_date: a.work_date, start_time: a.start_time, end_time: a.end_time, label: a.tasks?.title ?? "已排工作", vehicle: a.vehicles?.name ?? null });
     }
   }
