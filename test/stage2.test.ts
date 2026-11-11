@@ -67,6 +67,7 @@ describe("extractTasks", () => {
     expect(r.items[0].site).toBe("晶心");
     expect(body.tool_choice).toEqual({ type: "auto" });
     expect(body.system).toContain("2026-11-10");
+    expect(body.system).toContain("不要說「已記下」");
   });
 
   it("retries once when the model skips the tool, then succeeds", async () => {

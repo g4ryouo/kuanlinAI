@@ -98,6 +98,7 @@ function systemPrompt(i: ExtractInput): string {
     "- 一則訊息可能含多件工作，各自一筆。",
     "- 沒有說明要做什麼工作時，work 填「待確認」並把 work 放進 uncertain，不要自行編造工作內容。",
     "- 提到某人請假或休假：放進 leaves（person、date），不要當成工作。",
+    "- question 只能是要問老闆的問題，不要說「已記下」「已登記」「已處理」「已安排」等，你無法保證任何事已被記錄；請假只提示，系統不會寫入，不要在 question 提到請假。",
     "一律呼叫 submit_tasks 回報。",
   ].join("\n");
 }
